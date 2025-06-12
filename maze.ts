@@ -1,5 +1,5 @@
 import { buildEventTarget } from './utils';
-import { drawingSurfaces } from './drawingSurfaces.js';
+// import { drawingSurfaces } from './drawingSurfaces.js';
 import { algorithms } from './algorithms';
 import { buildRandom } from './random';
 import * as Constants from './constants'
@@ -136,10 +136,10 @@ export function buildMaze(config) {
       layers: config.grid.layers,
       exitConfig: config.exitConfig,
       random,
-      drawingSurface: drawingSurfaces[config.element.tagName.toLowerCase()]({
-        el: config.element,
-        lineWidth: config.lineWidth
-      })
+      // drawingSurface: drawingSurfaces[config.element.tagName.toLowerCase()]({
+      //   el: config.element,
+      //   lineWidth: config.lineWidth
+      // })
     }),
     algorithm = algorithms[config.algorithm];
 
@@ -165,17 +165,40 @@ export function buildMaze(config) {
 export type Coord = [x: number, y: number]
 export interface Cell {
   id: string,
-  coords: Array<Coord>,
+  coords: Coord[],
   metadata: {},
-  neighbours: {
-    random(fnCriteria: () => boolean): Cell
-    toArray(fnCriteria: () => boolean): Array<Cell>
-    linkedDirections(): any
-  }
+  neighbours: Map<Constants.Direction, Cell>
+  // {
+  //   random(fnCriteria: () => boolean | undefined): Cell
+  //   toArray(fnCriteria: () => boolean | undefined): Array<Array<Cell>>
+  //   linkedDirections(): any
+  // }
   isLinkedTo(otherCell: Cell): boolean
   links: Array<Cell>
 }
-function buildBaseGrid(config) {
+export interface Grid {
+  isSquare?: boolean,
+  initialise?(): void,
+  placeExits?(): void,
+  forEachCell(fn)
+  getAllCellCoords(): Array<Coord>
+  link(cell1: Cell, cell2: Cell)
+  metadata//: config
+  randomCell(fnCriteria: () => boolean)
+  addCell(...coords)
+  removeCell(...coords)
+  makeNeighbours(cell1WithDirection, cell2WithDirection)
+  getCellByCoordinates(...coords)
+  get cellCount()
+  on(eventName, handler)
+  findPathBetween(fromCoords, toCoords)
+  findDistancesFrom(...coords)
+  clearDistances()
+  clearPathAndSolution()
+  clearMetadata(...keys)
+  dispose()
+}
+function buildBaseGrid(config): Grid {
   "use strict";
   const cells = {}, { random } = config;
 
@@ -188,18 +211,19 @@ function buildBaseGrid(config) {
       id,
       coords,
       metadata: {},
-      neighbours: {
-        random(fnCriteria = () => true) {
-          return random.choice(this.toArray().filter(fnCriteria));
-        },
-        toArray(fnCriteria = () => true) {
-          return Object.values(this).filter(value => typeof value !== 'function').filter(fnCriteria);
-        },
-        linkedDirections() {
-          return this.toArray().filter(neighbour => neighbour.isLinkedTo(cell)).map(linkedNeighbour => Object.keys(this).find(direction => this[direction] === linkedNeighbour));
-        }
-      },
-      isLinkedTo(otherCell) {
+      neighbours: new Map(),
+      // {
+      //   random(fnCriteria = () => true) {
+      //     return random.choice(this.toArray().filter(fnCriteria));
+      //   },
+      //   toArray(fnCriteria = () => true) {
+      //     return Object.values(this).filter(value => typeof value !== 'function').filter(fnCriteria);
+      //   },
+      //   linkedDirections() {
+      //     return this.toArray().filter(neighbour => neighbour.isLinkedTo(cell)).map(linkedNeighbour => Object.keys(this).find(direction => this[direction] === linkedNeighbour));
+      //   }
+      // },
+      isLinkedTo(otherCell: Cell): boolean {
         return this.links.includes(otherCell);
       },
       links: []
@@ -281,7 +305,7 @@ function buildBaseGrid(config) {
     },
     findPathBetween(fromCoords, toCoords) {
       this.findDistancesFrom(...toCoords);
-      let currentCell = this.getCellByCoordinates(...fromCoords),
+      let currentCell: Cell = this.getCellByCoordinates(...fromCoords),
         endCell = this.getCellByCoordinates(...toCoords);
 
       const path = [];
@@ -305,7 +329,7 @@ function buildBaseGrid(config) {
       const frontier = [startCell];
       let maxDistance = 0, maxDistancePoint;
       while (frontier.length) {
-        const next = frontier.shift(),
+        const next: Cell = frontier.shift(),
           frontierDistance = next.metadata[Constants.METADATA_DISTANCE];
         const linkedUndistancedNeighbours = Object.values(next.neighbours)
           .filter(neighbour => next.isLinkedTo(neighbour))
@@ -355,7 +379,7 @@ export function buildSquareGrid(config) {
     grid = buildBaseGrid(config);
 
   defaultDrawingSurface.on(Constants.EVENT_CLICK, event => {
-    const coords = [Math.floor(event.x), Math.floor(event.y)];
+    const coords: Coord = [Math.floor(event.x), Math.floor(event.y)];
     if (grid.getCellByCoordinates(coords)) {
       eventTarget.trigger(Constants.EVENT_CLICK, {
         coords,
@@ -388,73 +412,73 @@ export function buildSquareGrid(config) {
     }
   };
 
-  grid.render = function (drawingSurface = defaultDrawingSurface) {
-    function drawFilledSquare(p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y, cell) {
-      drawingSurface.setColour(getCellBackgroundColour(cell, grid));
-      drawingSurface.fillPolygon({ x: p1x, y: p1y }, { x: p2x, y: p2y }, { x: p3x, y: p3y }, { x: p4x, y: p4y });
-      drawingSurface.setColour(Constants.WALL_COLOUR);
-    }
-
-    drawingSurface.setSpaceRequirements(grid.metadata.width, grid.metadata.height);
-    drawingSurface.clear();
-    grid.forEachCell(cell => {
-      const [x, y] = cell.coords;
-      drawFilledSquare(x, y, x + 1, y, x + 1, y + 1, x, y + 1, cell);
-    });
-
-    grid.forEachCell(cell => {
-      const [x, y] = cell.coords,
-        northNeighbour = cell.neighbours[Constants.DIRECTION_NORTH],
-        southNeighbour = cell.neighbours[Constants.DIRECTION_SOUTH],
-        eastNeighbour = cell.neighbours[Constants.DIRECTION_EAST],
-        westNeighbour = cell.neighbours[Constants.DIRECTION_WEST],
-        exitDirection = cell.metadata[Constants.METADATA_START_CELL] || cell.metadata[Constants.METADATA_END_CELL];
-
-      if ((!northNeighbour || !cell.isLinkedTo(northNeighbour)) && !(exitDirection === Constants.DIRECTION_NORTH)) {
-        drawingSurface.line(x, y, x + 1, y);
-      }
-      if ((!southNeighbour || !cell.isLinkedTo(southNeighbour)) && !(exitDirection === Constants.DIRECTION_SOUTH)) {
-        drawingSurface.line(x, y + 1, x + 1, y + 1);
-      }
-      if ((!eastNeighbour || !cell.isLinkedTo(eastNeighbour)) && !(exitDirection === Constants.DIRECTION_EAST)) {
-        drawingSurface.line(x + 1, y, x + 1, y + 1);
-      }
-      if ((!westNeighbour || !cell.isLinkedTo(westNeighbour)) && !(exitDirection === Constants.DIRECTION_WEST)) {
-        drawingSurface.line(x, y, x, y + 1);
-      }
-      cell.metadata[Constants.METADATA_RAW_COORDS] = drawingSurface.convertCoords(x + 0.5, y + 0.5);
-    });
-
-    const path = grid.metadata[Constants.METADATA_PATH];
-    if (path) {
-      const LINE_OFFSET = 0.5,
-        exitDetails = findExitCells(grid);
-
-      if (exitDetails) {
-        const [startCell, startDirection] = exitDetails[Constants.METADATA_START_CELL],
-          { x: startXOffset, y: startYOffset } = exitDirectionOffsets[startDirection],
-          [endCell, endDirection] = exitDetails[Constants.METADATA_END_CELL],
-          { x: endXOffset, y: endYOffset } = exitDirectionOffsets[endDirection];
-        path.unshift([path[0][0] + startXOffset, path[0][1] + startYOffset]);
-        path.push([path[path.length - 1][0] + endXOffset, path[path.length - 1][1] + endYOffset]);
-      }
-
-      let previousCoords;
-      drawingSurface.setColour(Constants.PATH_COLOUR);
-      path.forEach((currentCoords, i) => {
-        if (i) {
-          const x1 = previousCoords[0] + LINE_OFFSET,
-            y1 = previousCoords[1] + LINE_OFFSET,
-            x2 = currentCoords[0] + LINE_OFFSET,
-            y2 = currentCoords[1] + LINE_OFFSET;
-          drawingSurface.line(x1, y1, x2, y2);
-        }
-        previousCoords = currentCoords;
-      });
-
-      drawingSurface.setColour(Constants.WALL_COLOUR);
-    }
-  };
+  // grid.render = function (drawingSurface = defaultDrawingSurface) {
+  //   function drawFilledSquare(p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y, cell) {
+  //     drawingSurface.setColour(getCellBackgroundColour(cell, grid));
+  //     drawingSurface.fillPolygon({ x: p1x, y: p1y }, { x: p2x, y: p2y }, { x: p3x, y: p3y }, { x: p4x, y: p4y });
+  //     drawingSurface.setColour(Constants.WALL_COLOUR);
+  //   }
+  //
+  //   drawingSurface.setSpaceRequirements(grid.metadata.width, grid.metadata.height);
+  //   drawingSurface.clear();
+  //   grid.forEachCell(cell => {
+  //     const [x, y] = cell.coords;
+  //     drawFilledSquare(x, y, x + 1, y, x + 1, y + 1, x, y + 1, cell);
+  //   });
+  //
+  //   grid.forEachCell(cell => {
+  //     const [x, y] = cell.coords,
+  //       northNeighbour = cell.neighbours[Constants.DIRECTION_NORTH],
+  //       southNeighbour = cell.neighbours[Constants.DIRECTION_SOUTH],
+  //       eastNeighbour = cell.neighbours[Constants.DIRECTION_EAST],
+  //       westNeighbour = cell.neighbours[Constants.DIRECTION_WEST],
+  //       exitDirection = cell.metadata[Constants.METADATA_START_CELL] || cell.metadata[Constants.METADATA_END_CELL];
+  //
+  //     if ((!northNeighbour || !cell.isLinkedTo(northNeighbour)) && !(exitDirection === Constants.DIRECTION_NORTH)) {
+  //       drawingSurface.line(x, y, x + 1, y);
+  //     }
+  //     if ((!southNeighbour || !cell.isLinkedTo(southNeighbour)) && !(exitDirection === Constants.DIRECTION_SOUTH)) {
+  //       drawingSurface.line(x, y + 1, x + 1, y + 1);
+  //     }
+  //     if ((!eastNeighbour || !cell.isLinkedTo(eastNeighbour)) && !(exitDirection === Constants.DIRECTION_EAST)) {
+  //       drawingSurface.line(x + 1, y, x + 1, y + 1);
+  //     }
+  //     if ((!westNeighbour || !cell.isLinkedTo(westNeighbour)) && !(exitDirection === Constants.DIRECTION_WEST)) {
+  //       drawingSurface.line(x, y, x, y + 1);
+  //     }
+  //     cell.metadata[Constants.METADATA_RAW_COORDS] = drawingSurface.convertCoords(x + 0.5, y + 0.5);
+  //   });
+  //
+  //   const path = grid.metadata[Constants.METADATA_PATH];
+  //   if (path) {
+  //     const LINE_OFFSET = 0.5,
+  //       exitDetails = findExitCells(grid);
+  //
+  //     if (exitDetails) {
+  //       const [startCell, startDirection] = exitDetails[Constants.METADATA_START_CELL],
+  //         { x: startXOffset, y: startYOffset } = exitDirectionOffsets[startDirection],
+  //         [endCell, endDirection] = exitDetails[Constants.METADATA_END_CELL],
+  //         { x: endXOffset, y: endYOffset } = exitDirectionOffsets[endDirection];
+  //       path.unshift([path[0][0] + startXOffset, path[0][1] + startYOffset]);
+  //       path.push([path[path.length - 1][0] + endXOffset, path[path.length - 1][1] + endYOffset]);
+  //     }
+  //
+  //     let previousCoords;
+  //     drawingSurface.setColour(Constants.PATH_COLOUR);
+  //     path.forEach((currentCoords, i) => {
+  //       if (i) {
+  //         const x1 = previousCoords[0] + LINE_OFFSET,
+  //           y1 = previousCoords[1] + LINE_OFFSET,
+  //           x2 = currentCoords[0] + LINE_OFFSET,
+  //           y2 = currentCoords[1] + LINE_OFFSET;
+  //         drawingSurface.line(x1, y1, x2, y2);
+  //       }
+  //       previousCoords = currentCoords;
+  //     });
+  //
+  //     drawingSurface.setColour(Constants.WALL_COLOUR);
+  //   }
+  // };
 
   function findHardestExits() {
     let edgeCells = [];
@@ -539,18 +563,18 @@ export function buildSquareGrid(config) {
     }
   };
 
-  grid.getClosestDirectionForClick = function (cell, clickEvent) {
-    const [cellX, cellY] = cell.metadata[Constants.METADATA_RAW_COORDS],
-      [clickX, clickY] = clickEvent.rawCoords,
-      xDiff = clickX - cellX,
-      yDiff = clickY - cellY;
-
-    if (Math.abs(xDiff) < Math.abs(yDiff)) {
-      return yDiff > 0 ? Constants.DIRECTION_SOUTH : Constants.DIRECTION_NORTH;
-    } else {
-      return xDiff > 0 ? Constants.DIRECTION_EAST : Constants.DIRECTION_WEST;
-    }
-  };
+  // grid.getClosestDirectionForClick = function (cell, clickEvent) {
+  //   const [cellX, cellY] = cell.metadata[Constants.METADATA_RAW_COORDS],
+  //     [clickX, clickY] = clickEvent.rawCoords,
+  //     xDiff = clickX - cellX,
+  //     yDiff = clickY - cellY;
+  //
+  //   if (Math.abs(xDiff) < Math.abs(yDiff)) {
+  //     return yDiff > 0 ? Constants.DIRECTION_SOUTH : Constants.DIRECTION_NORTH;
+  //   } else {
+  //     return xDiff > 0 ? Constants.DIRECTION_EAST : Constants.DIRECTION_WEST;
+  //   }
+  // };
 
   return grid;
 }
@@ -593,7 +617,7 @@ export function buildTriangularGrid(config) {
     }
     const x = getXCoord(event),
       y = getYCoord(event),
-      coords = [x, y];
+      coords: Coord = [x, y];
 
     if (grid.getCellByCoordinates(coords)) {
       eventTarget.trigger(Constants.EVENT_CLICK, {
@@ -630,120 +654,120 @@ export function buildTriangularGrid(config) {
     }
   };
 
-  grid.render = function (drawingSurface = defaultDrawingSurface) {
-    drawingSurface.setSpaceRequirements(0.5 + grid.metadata.width / 2, grid.metadata.height * verticalAltitude, 0.8);
-
-    function drawFilledTriangle(p1x, p1y, p2x, p2y, p3x, p3y, cell) {
-      drawingSurface.setColour(getCellBackgroundColour(cell, grid));
-      drawingSurface.fillPolygon({ x: p1x, y: p1y }, { x: p2x, y: p2y }, { x: p3x, y: p3y });
-      drawingSurface.setColour(Constants.WALL_COLOUR);
-    }
-
-    function getCornerCoords(x, y) {
-      let p1x, p1y, p2x, p2y, p3x, p3y;
-
-      if (hasBaseOnSouthSide(x, y)) {
-        p1x = x / 2;
-        p1y = (y + 1) * verticalAltitude;
-        p2x = (x + 1) / 2;
-        p2y = p1y - verticalAltitude;
-        p3x = p1x + 1;
-        p3y = p1y;
-
-      } else {
-        p1x = x / 2;
-        p1y = y * verticalAltitude;
-        p2x = (x + 1) / 2;
-        p2y = p1y + verticalAltitude;
-        p3x = p1x + 1;
-        p3y = p1y
-      }
-      return [p1x, p1y, p2x, p2y, p3x, p3y];
-    }
-
-    drawingSurface.clear();
-
-    grid.forEachCell(cell => {
-      "use strict";
-      const [x, y] = cell.coords,
-        [p1x, p1y, p2x, p2y, p3x, p3y] = getCornerCoords(x, y);
-      drawFilledTriangle(p1x, p1y, p2x, p2y, p3x, p3y, cell);
-    });
-
-    const path = grid.metadata[Constants.METADATA_PATH];
-    if (path) {
-      const exitDetails = findExitCells(grid);
-
-      let previousX, previousY;
-      drawingSurface.setColour(Constants.PATH_COLOUR);
-
-      if (exitDetails) {
-        const [startCell, startDirection] = exitDetails[Constants.METADATA_START_CELL],
-          { x: startXOffset, y: startYOffset } = exitDirectionOffsets[startDirection],
-          [endCell, endDirection] = exitDetails[Constants.METADATA_END_CELL],
-          { x: endXOffset, y: endYOffset } = exitDirectionOffsets[endDirection];
-        path.unshift([path[0][0] + startXOffset, path[0][1] + startYOffset]);
-        path.push([path[path.length - 1][0] + endXOffset, path[path.length - 1][1] + endYOffset]);
-      }
-
-      for (let i = 0; i < path.length; i++) {
-        const
-          currentCellCoords = path[i],
-          nextCellCoords = path[i + 1],
-          [p1x, p1y, p2x, p2y, p3x, p3y] = getCornerCoords(...currentCellCoords);
-
-        if (nextCellCoords) {
-          const [currentCellX, currentCellY] = currentCellCoords,
-            [nextCellX, nextCellY] = nextCellCoords;
-
-          let currentX, currentY;
-          if (nextCellX > currentCellX) {
-            currentX = midPoint(p2x, p3x);
-            currentY = midPoint(p2y, p3y);
-
-          } else if (nextCellX < currentCellX) {
-            currentX = midPoint(p1x, p2x);
-            currentY = midPoint(p1y, p2y);
-
-          } else {
-            currentX = midPoint(p3x, p1x);
-            currentY = midPoint(p3y, p1y);
-          }
-          if (i) {
-            drawingSurface.line(previousX, previousY, currentX, currentY);
-          }
-          [previousX, previousY] = [currentX, currentY];
-        }
-
-      }
-
-      drawingSurface.setColour(Constants.WALL_COLOUR);
-    }
-
-    grid.forEachCell(cell => {
-      "use strict";
-      const [x, y] = cell.coords,
-        northNeighbour = cell.neighbours[Constants.DIRECTION_NORTH],
-        southNeighbour = cell.neighbours[Constants.DIRECTION_SOUTH],
-        eastNeighbour = cell.neighbours[Constants.DIRECTION_EAST],
-        westNeighbour = cell.neighbours[Constants.DIRECTION_WEST],
-        exitDirection = cell.metadata[Constants.METADATA_START_CELL] || cell.metadata[Constants.METADATA_END_CELL];
-
-      const [p1x, p1y, p2x, p2y, p3x, p3y] = getCornerCoords(x, y),
-        northOrSouthNeighbour = hasBaseOnSouthSide(x, y) ? southNeighbour : northNeighbour;
-
-      if ((!northOrSouthNeighbour || !cell.isLinkedTo(northOrSouthNeighbour)) && ![Constants.DIRECTION_NORTH, Constants.DIRECTION_SOUTH].includes(exitDirection)) {
-        drawingSurface.line(p1x, p1y, p3x, p3y);
-      }
-      if ((!eastNeighbour || !cell.isLinkedTo(eastNeighbour)) && !(exitDirection === Constants.DIRECTION_EAST)) {
-        drawingSurface.line(p2x, p2y, p3x, p3y);
-      }
-      if ((!westNeighbour || !cell.isLinkedTo(westNeighbour)) && !(exitDirection === Constants.DIRECTION_WEST)) {
-        drawingSurface.line(p1x, p1y, p2x, p2y);
-      }
-      cell.metadata[Constants.METADATA_RAW_COORDS] = drawingSurface.convertCoords(midPoint(p1x, p2x, p3x), midPoint(p1y, p2y, p3y));
-    });
-  };
+  // grid.render = function (drawingSurface = defaultDrawingSurface) {
+  //   drawingSurface.setSpaceRequirements(0.5 + grid.metadata.width / 2, grid.metadata.height * verticalAltitude, 0.8);
+  //
+  //   function drawFilledTriangle(p1x, p1y, p2x, p2y, p3x, p3y, cell) {
+  //     drawingSurface.setColour(getCellBackgroundColour(cell, grid));
+  //     drawingSurface.fillPolygon({ x: p1x, y: p1y }, { x: p2x, y: p2y }, { x: p3x, y: p3y });
+  //     drawingSurface.setColour(Constants.WALL_COLOUR);
+  //   }
+  //
+  //   function getCornerCoords(x, y) {
+  //     let p1x, p1y, p2x, p2y, p3x, p3y;
+  //
+  //     if (hasBaseOnSouthSide(x, y)) {
+  //       p1x = x / 2;
+  //       p1y = (y + 1) * verticalAltitude;
+  //       p2x = (x + 1) / 2;
+  //       p2y = p1y - verticalAltitude;
+  //       p3x = p1x + 1;
+  //       p3y = p1y;
+  //
+  //     } else {
+  //       p1x = x / 2;
+  //       p1y = y * verticalAltitude;
+  //       p2x = (x + 1) / 2;
+  //       p2y = p1y + verticalAltitude;
+  //       p3x = p1x + 1;
+  //       p3y = p1y
+  //     }
+  //     return [p1x, p1y, p2x, p2y, p3x, p3y];
+  //   }
+  //
+  //   drawingSurface.clear();
+  //
+  //   grid.forEachCell(cell => {
+  //     "use strict";
+  //     const [x, y] = cell.coords,
+  //       [p1x, p1y, p2x, p2y, p3x, p3y] = getCornerCoords(x, y);
+  //     drawFilledTriangle(p1x, p1y, p2x, p2y, p3x, p3y, cell);
+  //   });
+  //
+  //   const path = grid.metadata[Constants.METADATA_PATH];
+  //   if (path) {
+  //     const exitDetails = findExitCells(grid);
+  //
+  //     let previousX, previousY;
+  //     drawingSurface.setColour(Constants.PATH_COLOUR);
+  //
+  //     if (exitDetails) {
+  //       const [startCell, startDirection] = exitDetails[Constants.METADATA_START_CELL],
+  //         { x: startXOffset, y: startYOffset } = exitDirectionOffsets[startDirection],
+  //         [endCell, endDirection] = exitDetails[Constants.METADATA_END_CELL],
+  //         { x: endXOffset, y: endYOffset } = exitDirectionOffsets[endDirection];
+  //       path.unshift([path[0][0] + startXOffset, path[0][1] + startYOffset]);
+  //       path.push([path[path.length - 1][0] + endXOffset, path[path.length - 1][1] + endYOffset]);
+  //     }
+  //
+  //     for (let i = 0; i < path.length; i++) {
+  //       const
+  //         currentCellCoords = path[i],
+  //         nextCellCoords = path[i + 1],
+  //         [p1x, p1y, p2x, p2y, p3x, p3y] = getCornerCoords(...currentCellCoords);
+  //
+  //       if (nextCellCoords) {
+  //         const [currentCellX, currentCellY] = currentCellCoords,
+  //           [nextCellX, nextCellY] = nextCellCoords;
+  //
+  //         let currentX, currentY;
+  //         if (nextCellX > currentCellX) {
+  //           currentX = midPoint(p2x, p3x);
+  //           currentY = midPoint(p2y, p3y);
+  //
+  //         } else if (nextCellX < currentCellX) {
+  //           currentX = midPoint(p1x, p2x);
+  //           currentY = midPoint(p1y, p2y);
+  //
+  //         } else {
+  //           currentX = midPoint(p3x, p1x);
+  //           currentY = midPoint(p3y, p1y);
+  //         }
+  //         if (i) {
+  //           drawingSurface.line(previousX, previousY, currentX, currentY);
+  //         }
+  //         [previousX, previousY] = [currentX, currentY];
+  //       }
+  //
+  //     }
+  //
+  //     drawingSurface.setColour(Constants.WALL_COLOUR);
+  //   }
+  //
+  //   grid.forEachCell(cell => {
+  //     "use strict";
+  //     const [x, y] = cell.coords,
+  //       northNeighbour = cell.neighbours[Constants.DIRECTION_NORTH],
+  //       southNeighbour = cell.neighbours[Constants.DIRECTION_SOUTH],
+  //       eastNeighbour = cell.neighbours[Constants.DIRECTION_EAST],
+  //       westNeighbour = cell.neighbours[Constants.DIRECTION_WEST],
+  //       exitDirection = cell.metadata[Constants.METADATA_START_CELL] || cell.metadata[Constants.METADATA_END_CELL];
+  //
+  //     const [p1x, p1y, p2x, p2y, p3x, p3y] = getCornerCoords(x, y),
+  //       northOrSouthNeighbour = hasBaseOnSouthSide(x, y) ? southNeighbour : northNeighbour;
+  //
+  //     if ((!northOrSouthNeighbour || !cell.isLinkedTo(northOrSouthNeighbour)) && ![Constants.DIRECTION_NORTH, Constants.DIRECTION_SOUTH].includes(exitDirection)) {
+  //       drawingSurface.line(p1x, p1y, p3x, p3y);
+  //     }
+  //     if ((!eastNeighbour || !cell.isLinkedTo(eastNeighbour)) && !(exitDirection === Constants.DIRECTION_EAST)) {
+  //       drawingSurface.line(p2x, p2y, p3x, p3y);
+  //     }
+  //     if ((!westNeighbour || !cell.isLinkedTo(westNeighbour)) && !(exitDirection === Constants.DIRECTION_WEST)) {
+  //       drawingSurface.line(p1x, p1y, p2x, p2y);
+  //     }
+  //     cell.metadata[Constants.METADATA_RAW_COORDS] = drawingSurface.convertCoords(midPoint(p1x, p2x, p3x), midPoint(p1y, p2y, p3y));
+  //   });
+  // };
 
   function findHardestExits() {
     let edgeCells = [];
@@ -758,7 +782,8 @@ export function buildTriangularGrid(config) {
 
     function findRandomMissingNeighbourDirection(cell) {
       const directions = [Constants.DIRECTION_EAST, Constants.DIRECTION_WEST];
-      if (hasBaseOnSouthSide(...cell.coords)) {
+      // was ...cell.coords
+      if (hasBaseOnSouthSide(cell.coords.x, cell.coords.y)) {
         directions.push(Constants.DIRECTION_SOUTH);
       } else {
         directions.push(Constants.DIRECTION_NORTH);
@@ -843,32 +868,32 @@ export function buildTriangularGrid(config) {
     }
   };
 
-  grid.getClosestDirectionForClick = function (cell, clickEvent) {
-    const cellCoords = cell.metadata[Constants.METADATA_RAW_COORDS],
-      clickCoords = clickEvent.rawCoords,
-      baseOnSouthSide = hasBaseOnSouthSide(...cell.coords);
-
-    let angleFromNorth = getAngleFromNorth(cellCoords, clickCoords),
-      sixtyDegrees = Math.PI * 2 / 6;
-
-    if (baseOnSouthSide) {
-      if (Math.abs(angleFromNorth) > 2 * sixtyDegrees) {
-        return Constants.DIRECTION_SOUTH;
-      } else if (angleFromNorth > 0) {
-        return Constants.DIRECTION_EAST;
-      } else {
-        return Constants.DIRECTION_WEST;
-      }
-    } else {
-      if (Math.abs(angleFromNorth) < sixtyDegrees) {
-        return Constants.DIRECTION_NORTH;
-      } else if (angleFromNorth > 0) {
-        return Constants.DIRECTION_EAST;
-      } else {
-        return Constants.DIRECTION_WEST;
-      }
-    }
-  };
+  // grid.getClosestDirectionForClick = function (cell, clickEvent) {
+  //   const cellCoords = cell.metadata[Constants.METADATA_RAW_COORDS],
+  //     clickCoords = clickEvent.rawCoords,
+  //     baseOnSouthSide = hasBaseOnSouthSide(...cell.coords);
+  //
+  //   let angleFromNorth = getAngleFromNorth(cellCoords, clickCoords),
+  //     sixtyDegrees = Math.PI * 2 / 6;
+  //
+  //   if (baseOnSouthSide) {
+  //     if (Math.abs(angleFromNorth) > 2 * sixtyDegrees) {
+  //       return Constants.DIRECTION_SOUTH;
+  //     } else if (angleFromNorth > 0) {
+  //       return Constants.DIRECTION_EAST;
+  //     } else {
+  //       return Constants.DIRECTION_WEST;
+  //     }
+  //   } else {
+  //     if (Math.abs(angleFromNorth) < sixtyDegrees) {
+  //       return Constants.DIRECTION_NORTH;
+  //     } else if (angleFromNorth > 0) {
+  //       return Constants.DIRECTION_EAST;
+  //     } else {
+  //       return Constants.DIRECTION_WEST;
+  //     }
+  //   }
+  // };
 
   return grid;
 }
@@ -924,7 +949,7 @@ export function buildHexagonalGrid(config) {
       x = Math.floor((event.x - xRowBasedAdjustment) / (2 * xOffset));
       y = row;
     }
-    const coords = [x, y];
+    const coords: Coord = [x, y];
 
     if (grid.getCellByCoordinates(coords)) {
       eventTarget.trigger(Constants.EVENT_CLICK, {
@@ -964,116 +989,116 @@ export function buildHexagonalGrid(config) {
     }
   };
 
-  grid.render = function (drawingSurface = defaultDrawingSurface) {
-    drawingSurface.setSpaceRequirements(grid.metadata.width * 2 * xOffset + Math.min(1, grid.metadata.height - 1) * xOffset, grid.metadata.height * yOffset2 + yOffset1, 1.5);
-
-    function drawFilledHexagon(p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y, p5x, p5y, p6x, p6y, cell) {
-      drawingSurface.setColour(getCellBackgroundColour(cell, grid));
-      drawingSurface.fillPolygon({ x: p1x, y: p1y }, { x: p2x, y: p2y }, { x: p3x, y: p3y }, { x: p4x, y: p4y }, { x: p5x, y: p5y }, { x: p6x, y: p6y });
-      drawingSurface.setColour(Constants.WALL_COLOUR);
-    }
-    function getCornerCoords(x, y) {
-      const rowXOffset = Math.abs(y % 2) * xOffset,
-        p1x = rowXOffset + x * xOffset * 2,
-        p1y = yOffset1 + y * yOffset2,
-        p2x = p1x,
-        p2y = (y + 1) * yOffset2,
-        p3x = rowXOffset + (2 * x + 1) * xOffset,
-        p3y = y * yOffset2 + yOffset3,
-        p4x = p2x + 2 * xOffset,
-        p4y = p2y,
-        p5x = p4x,
-        p5y = p1y,
-        p6x = p3x,
-        p6y = y * yOffset2;
-
-      return [p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y, p5x, p5y, p6x, p6y];
-    }
-
-    drawingSurface.clear();
-    grid.forEachCell(cell => {
-      "use strict";
-      const [x, y] = cell.coords,
-        [p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y, p5x, p5y, p6x, p6y] = getCornerCoords(x, y);
-
-      drawFilledHexagon(p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y, p5x, p5y, p6x, p6y, cell);
-    });
-
-    grid.forEachCell(cell => {
-      "use strict";
-      const [x, y] = cell.coords,
-        eastNeighbour = cell.neighbours[Constants.DIRECTION_EAST],
-        westNeighbour = cell.neighbours[Constants.DIRECTION_WEST],
-        northEastNeighbour = cell.neighbours[Constants.DIRECTION_NORTH_EAST],
-        northWestNeighbour = cell.neighbours[Constants.DIRECTION_NORTH_WEST],
-        southEastNeighbour = cell.neighbours[Constants.DIRECTION_SOUTH_EAST],
-        southWestNeighbour = cell.neighbours[Constants.DIRECTION_SOUTH_WEST],
-        exitDirection = cell.metadata[Constants.METADATA_START_CELL] || cell.metadata[Constants.METADATA_END_CELL],
-        [p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y, p5x, p5y, p6x, p6y] = getCornerCoords(x, y);
-
-      if ((!eastNeighbour || !cell.isLinkedTo(eastNeighbour)) && !(exitDirection === Constants.DIRECTION_EAST)) {
-        drawingSurface.line(p4x, p4y, p5x, p5y);
-      }
-      if ((!westNeighbour || !cell.isLinkedTo(westNeighbour)) && !(exitDirection === Constants.DIRECTION_WEST)) {
-        drawingSurface.line(p1x, p1y, p2x, p2y);
-      }
-      if ((!northEastNeighbour || !cell.isLinkedTo(northEastNeighbour)) && !(exitDirection === Constants.DIRECTION_NORTH_EAST)) {
-        drawingSurface.line(p5x, p5y, p6x, p6y);
-      }
-      if ((!northWestNeighbour || !cell.isLinkedTo(northWestNeighbour)) && !(exitDirection === Constants.DIRECTION_NORTH_WEST)) {
-        drawingSurface.line(p1x, p1y, p6x, p6y);
-      }
-      if ((!southEastNeighbour || !cell.isLinkedTo(southEastNeighbour)) && !(exitDirection === Constants.DIRECTION_SOUTH_EAST)) {
-        drawingSurface.line(p3x, p3y, p4x, p4y);
-      }
-      if ((!southWestNeighbour || !cell.isLinkedTo(southWestNeighbour)) && !(exitDirection === Constants.DIRECTION_SOUTH_WEST)) {
-        drawingSurface.line(p2x, p2y, p3x, p3y);
-      }
-      cell.metadata[Constants.METADATA_RAW_COORDS] = drawingSurface.convertCoords(midPoint(p1x, p2x, p3x, p4x, p5x, p6x), midPoint(p1y, p2y, p3y, p4y, p5y, p6y));
-    });
-
-    const path = grid.metadata[Constants.METADATA_PATH];
-
-    function drawExitLine(cell, direction) {
-      const [p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y, p5x, p5y, p6x, p6y] = getCornerCoords(...cell.coords),
-        centerX = p3x,
-        centerY = (p3y + p6y) / 2;
-
-      const [endX, endY] = {
-        [Constants.DIRECTION_EAST]: [midPoint(p4x, p5x), midPoint(p4y, p5y)],
-        [Constants.DIRECTION_WEST]: [midPoint(p1x, p2x), midPoint(p1y, p2y)],
-        [Constants.DIRECTION_NORTH_EAST]: [midPoint(p5x, p6x), midPoint(p5y, p6y)],
-        [Constants.DIRECTION_NORTH_WEST]: [midPoint(p1x, p6x), midPoint(p1y, p6y)],
-        [Constants.DIRECTION_SOUTH_EAST]: [midPoint(p3x, p4x), midPoint(p3y, p4y)],
-        [Constants.DIRECTION_SOUTH_WEST]: [midPoint(p2x, p3x), midPoint(p2y, p3y)],
-      }[direction];
-
-      drawingSurface.line(centerX, centerY, endX, endY);
-    }
-
-    if (path) {
-      drawingSurface.setColour(Constants.PATH_COLOUR);
-      const exitDetails = findExitCells(grid);
-
-      if (exitDetails) {
-        drawExitLine(...exitDetails[Constants.METADATA_START_CELL]);
-        drawExitLine(...exitDetails[Constants.METADATA_END_CELL]);
-      }
-
-      let previousX, previousY;
-      path.forEach((currentCoords, i) => {
-        const
-          [p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y, p5x, p5y, p6x, p6y] = getCornerCoords(currentCoords[0], currentCoords[1]),
-          centerX = p3x,
-          centerY = (p3y + p6y) / 2;
-        if (i) {
-          drawingSurface.line(previousX, previousY, centerX, centerY);
-        }
-        [previousX, previousY] = [centerX, centerY];
-      });
-      drawingSurface.setColour(Constants.WALL_COLOUR);
-    }
-  };
+  // grid.render = function (drawingSurface = defaultDrawingSurface) {
+  //   drawingSurface.setSpaceRequirements(grid.metadata.width * 2 * xOffset + Math.min(1, grid.metadata.height - 1) * xOffset, grid.metadata.height * yOffset2 + yOffset1, 1.5);
+  //
+  //   function drawFilledHexagon(p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y, p5x, p5y, p6x, p6y, cell) {
+  //     drawingSurface.setColour(getCellBackgroundColour(cell, grid));
+  //     drawingSurface.fillPolygon({ x: p1x, y: p1y }, { x: p2x, y: p2y }, { x: p3x, y: p3y }, { x: p4x, y: p4y }, { x: p5x, y: p5y }, { x: p6x, y: p6y });
+  //     drawingSurface.setColour(Constants.WALL_COLOUR);
+  //   }
+  //   function getCornerCoords(x, y) {
+  //     const rowXOffset = Math.abs(y % 2) * xOffset,
+  //       p1x = rowXOffset + x * xOffset * 2,
+  //       p1y = yOffset1 + y * yOffset2,
+  //       p2x = p1x,
+  //       p2y = (y + 1) * yOffset2,
+  //       p3x = rowXOffset + (2 * x + 1) * xOffset,
+  //       p3y = y * yOffset2 + yOffset3,
+  //       p4x = p2x + 2 * xOffset,
+  //       p4y = p2y,
+  //       p5x = p4x,
+  //       p5y = p1y,
+  //       p6x = p3x,
+  //       p6y = y * yOffset2;
+  //
+  //     return [p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y, p5x, p5y, p6x, p6y];
+  //   }
+  //
+  //   drawingSurface.clear();
+  //   grid.forEachCell(cell => {
+  //     "use strict";
+  //     const [x, y] = cell.coords,
+  //       [p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y, p5x, p5y, p6x, p6y] = getCornerCoords(x, y);
+  //
+  //     drawFilledHexagon(p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y, p5x, p5y, p6x, p6y, cell);
+  //   });
+  //
+  //   grid.forEachCell(cell => {
+  //     "use strict";
+  //     const [x, y] = cell.coords,
+  //       eastNeighbour = cell.neighbours[Constants.DIRECTION_EAST],
+  //       westNeighbour = cell.neighbours[Constants.DIRECTION_WEST],
+  //       northEastNeighbour = cell.neighbours[Constants.DIRECTION_NORTH_EAST],
+  //       northWestNeighbour = cell.neighbours[Constants.DIRECTION_NORTH_WEST],
+  //       southEastNeighbour = cell.neighbours[Constants.DIRECTION_SOUTH_EAST],
+  //       southWestNeighbour = cell.neighbours[Constants.DIRECTION_SOUTH_WEST],
+  //       exitDirection = cell.metadata[Constants.METADATA_START_CELL] || cell.metadata[Constants.METADATA_END_CELL],
+  //       [p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y, p5x, p5y, p6x, p6y] = getCornerCoords(x, y);
+  //
+  //     if ((!eastNeighbour || !cell.isLinkedTo(eastNeighbour)) && !(exitDirection === Constants.DIRECTION_EAST)) {
+  //       drawingSurface.line(p4x, p4y, p5x, p5y);
+  //     }
+  //     if ((!westNeighbour || !cell.isLinkedTo(westNeighbour)) && !(exitDirection === Constants.DIRECTION_WEST)) {
+  //       drawingSurface.line(p1x, p1y, p2x, p2y);
+  //     }
+  //     if ((!northEastNeighbour || !cell.isLinkedTo(northEastNeighbour)) && !(exitDirection === Constants.DIRECTION_NORTH_EAST)) {
+  //       drawingSurface.line(p5x, p5y, p6x, p6y);
+  //     }
+  //     if ((!northWestNeighbour || !cell.isLinkedTo(northWestNeighbour)) && !(exitDirection === Constants.DIRECTION_NORTH_WEST)) {
+  //       drawingSurface.line(p1x, p1y, p6x, p6y);
+  //     }
+  //     if ((!southEastNeighbour || !cell.isLinkedTo(southEastNeighbour)) && !(exitDirection === Constants.DIRECTION_SOUTH_EAST)) {
+  //       drawingSurface.line(p3x, p3y, p4x, p4y);
+  //     }
+  //     if ((!southWestNeighbour || !cell.isLinkedTo(southWestNeighbour)) && !(exitDirection === Constants.DIRECTION_SOUTH_WEST)) {
+  //       drawingSurface.line(p2x, p2y, p3x, p3y);
+  //     }
+  //     cell.metadata[Constants.METADATA_RAW_COORDS] = drawingSurface.convertCoords(midPoint(p1x, p2x, p3x, p4x, p5x, p6x), midPoint(p1y, p2y, p3y, p4y, p5y, p6y));
+  //   });
+  //
+  //   const path = grid.metadata[Constants.METADATA_PATH];
+  //
+  //   function drawExitLine(cell, direction) {
+  //     const [p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y, p5x, p5y, p6x, p6y] = getCornerCoords(...cell.coords),
+  //       centerX = p3x,
+  //       centerY = (p3y + p6y) / 2;
+  //
+  //     const [endX, endY] = {
+  //       [Constants.DIRECTION_EAST]: [midPoint(p4x, p5x), midPoint(p4y, p5y)],
+  //       [Constants.DIRECTION_WEST]: [midPoint(p1x, p2x), midPoint(p1y, p2y)],
+  //       [Constants.DIRECTION_NORTH_EAST]: [midPoint(p5x, p6x), midPoint(p5y, p6y)],
+  //       [Constants.DIRECTION_NORTH_WEST]: [midPoint(p1x, p6x), midPoint(p1y, p6y)],
+  //       [Constants.DIRECTION_SOUTH_EAST]: [midPoint(p3x, p4x), midPoint(p3y, p4y)],
+  //       [Constants.DIRECTION_SOUTH_WEST]: [midPoint(p2x, p3x), midPoint(p2y, p3y)],
+  //     }[direction];
+  //
+  //     drawingSurface.line(centerX, centerY, endX, endY);
+  //   }
+  //
+  //   if (path) {
+  //     drawingSurface.setColour(Constants.PATH_COLOUR);
+  //     const exitDetails = findExitCells(grid);
+  //
+  //     if (exitDetails) {
+  //       drawExitLine(...exitDetails[Constants.METADATA_START_CELL]);
+  //       drawExitLine(...exitDetails[Constants.METADATA_END_CELL]);
+  //     }
+  //
+  //     let previousX, previousY;
+  //     path.forEach((currentCoords, i) => {
+  //       const
+  //         [p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y, p5x, p5y, p6x, p6y] = getCornerCoords(currentCoords[0], currentCoords[1]),
+  //         centerX = p3x,
+  //         centerY = (p3y + p6y) / 2;
+  //       if (i) {
+  //         drawingSurface.line(previousX, previousY, centerX, centerY);
+  //       }
+  //       [previousX, previousY] = [centerX, centerY];
+  //     });
+  //     drawingSurface.setColour(Constants.WALL_COLOUR);
+  //   }
+  // };
 
   function findHardestExits() {
     let edgeCells = [];
@@ -1158,16 +1183,16 @@ export function buildHexagonalGrid(config) {
     }
   };
 
-  grid.getClosestDirectionForClick = function (cell, clickEvent) {
-    const cellCoords = cell.metadata[Constants.METADATA_RAW_COORDS],
-      clickCoords = clickEvent.rawCoords;
-
-    let angleFromNorth = getAngleFromNorth(cellCoords, clickCoords),
-      sixtyDegrees = Math.PI * 2 / 6,
-      sector = Math.floor((angleFromNorth + Math.PI) / sixtyDegrees);
-
-    return [Constants.DIRECTION_SOUTH_WEST, Constants.DIRECTION_WEST, Constants.DIRECTION_NORTH_WEST, Constants.DIRECTION_NORTH_EAST, Constants.DIRECTION_EAST, Constants.DIRECTION_SOUTH_EAST][sector];
-  };
+  // grid.getClosestDirectionForClick = function (cell, clickEvent) {
+  //   const cellCoords = cell.metadata[Constants.METADATA_RAW_COORDS],
+  //     clickCoords = clickEvent.rawCoords;
+  //
+  //   let angleFromNorth = getAngleFromNorth(cellCoords, clickCoords),
+  //     sixtyDegrees = Math.PI * 2 / 6,
+  //     sector = Math.floor((angleFromNorth + Math.PI) / sixtyDegrees);
+  //
+  //   return [Constants.DIRECTION_SOUTH_WEST, Constants.DIRECTION_WEST, Constants.DIRECTION_NORTH_WEST, Constants.DIRECTION_NORTH_EAST, Constants.DIRECTION_EAST, Constants.DIRECTION_SOUTH_EAST][sector];
+  // };
 
   return grid;
 }
@@ -1619,29 +1644,29 @@ export function buildCircularGrid(config) {
     }
   };
 
-  grid.getClosestDirectionForClick = function (cell, clickEvent) {
-    const cellCoords = cell.metadata[Constants.METADATA_RAW_COORDS],
-      clickCoords = clickEvent.rawCoords,
-      [startAngle, endAngle, _1, _2] = getCellCoords(...cell.coords),
-      coordAngle = midPoint(startAngle, endAngle),
-      hasFiveExits = thisCell(cell.coords).hasFiveExits();
-
-    let angleFromNorth = getAngleFromNorth(cellCoords, clickCoords), // -180 to 180
-      angleFromLineToCenter = (Math.PI * 4 + angleFromNorth - coordAngle) % (Math.PI * 2); //
-
-    const fortyFiveDegrees = Math.PI / 4;
-    if (angleFromLineToCenter <= fortyFiveDegrees) {
-      return `${Constants.DIRECTION_OUTWARDS}_${hasFiveExits ? 1 : 0}`;
-    } else if (angleFromLineToCenter > fortyFiveDegrees && angleFromLineToCenter <= 3 * fortyFiveDegrees) {
-      return Constants.DIRECTION_CLOCKWISE;
-    } else if (angleFromLineToCenter > 3 * fortyFiveDegrees && angleFromLineToCenter <= 5 * fortyFiveDegrees) {
-      return Constants.DIRECTION_INWARDS;
-    } else if (angleFromLineToCenter > 5 * fortyFiveDegrees && angleFromLineToCenter <= 7 * fortyFiveDegrees) {
-      return Constants.DIRECTION_ANTICLOCKWISE;
-    } else {
-      return `${Constants.DIRECTION_OUTWARDS}_0`;
-    }
-  };
+  // grid.getClosestDirectionForClick = function (cell, clickEvent) {
+  //   const cellCoords = cell.metadata[Constants.METADATA_RAW_COORDS],
+  //     clickCoords = clickEvent.rawCoords,
+  //     [startAngle, endAngle, _1, _2] = getCellCoords(...cell.coords),
+  //     coordAngle = midPoint(startAngle, endAngle),
+  //     hasFiveExits = thisCell(cell.coords).hasFiveExits();
+  //
+  //   let angleFromNorth = getAngleFromNorth(cellCoords, clickCoords), // -180 to 180
+  //     angleFromLineToCenter = (Math.PI * 4 + angleFromNorth - coordAngle) % (Math.PI * 2); //
+  //
+  //   const fortyFiveDegrees = Math.PI / 4;
+  //   if (angleFromLineToCenter <= fortyFiveDegrees) {
+  //     return `${Constants.DIRECTION_OUTWARDS}_${hasFiveExits ? 1 : 0}`;
+  //   } else if (angleFromLineToCenter > fortyFiveDegrees && angleFromLineToCenter <= 3 * fortyFiveDegrees) {
+  //     return Constants.DIRECTION_CLOCKWISE;
+  //   } else if (angleFromLineToCenter > 3 * fortyFiveDegrees && angleFromLineToCenter <= 5 * fortyFiveDegrees) {
+  //     return Constants.DIRECTION_INWARDS;
+  //   } else if (angleFromLineToCenter > 5 * fortyFiveDegrees && angleFromLineToCenter <= 7 * fortyFiveDegrees) {
+  //     return Constants.DIRECTION_ANTICLOCKWISE;
+  //   } else {
+  //     return `${Constants.DIRECTION_OUTWARDS}_0`;
+  //   }
+  // };
 
   return grid;
 }

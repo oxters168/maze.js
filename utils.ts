@@ -10,7 +10,7 @@ export interface EventData {
 export interface CustomEventTarget {
   trigger(eventName: MazeEvent, eventData: EventData): void
   on(eventName: MazeEvent, handler: (eventData: EventData) => void): void
-  off(eventName: MazeEvent | null): void
+  off(eventName?: MazeEvent): void
 }
 
 export function forEachContiguousPair(array: Array<Cell>, fn) {
@@ -37,7 +37,7 @@ export function buildEventTarget(): CustomEventTarget {
       handlers.push({ eventName, eventHandler });
       eventTarget.addEventListener(eventName, eventHandler);
     },
-    off(eventNameToRemove: MazeEvent | null = null) {
+    off(eventNameToRemove?: MazeEvent) {
       let i = handlers.length;
       while (i--) {
         const { eventName, eventHandler } = handlers[i];
