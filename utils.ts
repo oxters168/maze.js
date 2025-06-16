@@ -3,7 +3,7 @@ import { Coord, Cell } from "./maze"
 
 export interface EventData {
   coords: Coord
-  rawCoords: Coord
+  rawCoords?: Coord
   shift: boolean
   alt: boolean
 }

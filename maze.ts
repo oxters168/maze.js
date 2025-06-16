@@ -20,24 +20,24 @@ export const shapes = {
 };
 
 function getCellBackgroundColour(cell, grid) {
-  const distance = cell.metadata[Constants.METADATA_DISTANCE];
+  const distance = cell.metadata.get(Constants.METADATA_DISTANCE)
 
   if (distance !== undefined) {
-    return getDistanceColour(distance, grid.metadata[Constants.METADATA_MAX_DISTANCE]);
+    return getDistanceColour(distance, grid.metadata[Constants.METADATA_MAX_DISTANCE])
 
-  } else if (cell.metadata[Constants.METADATA_MASKED]) {
+  } else if (cell.metadata.get(Constants.METADATA_MASKED)) {
     return Constants.CELL_MASKED_COLOUR;
 
-  } else if (cell.metadata[Constants.METADATA_CURRENT_CELL]) {
+  } else if (cell.metadata.get(Constants.METADATA_CURRENT_CELL)) {
     return Constants.CELL_CURRENT_CELL_COLOUR;
 
-  } else if (cell.metadata[Constants.METADATA_UNPROCESSED_CELL]) {
+  } else if (cell.metadata.get(Constants.METADATA_UNPROCESSED_CELL)) {
     return Constants.CELL_UNPROCESSED_CELL_COLOUR;
 
-  } else if (cell.metadata[Constants.METADATA_PLAYER_CURRENT]) {
+  } else if (cell.metadata.get(Constants.METADATA_PLAYER_CURRENT)) {
     return Constants.CELL_PLAYER_CURRENT_COLOUR;
 
-  } else if (cell.metadata[Constants.METADATA_PLAYER_VISITED]) {
+  } else if (cell.metadata.get(Constants.METADATA_PLAYER_VISITED)) {
     return Constants.CELL_PLAYER_VISITED_COLOUR;
 
   } else {
@@ -45,20 +45,20 @@ function getCellBackgroundColour(cell, grid) {
   }
 }
 
-function findExitCells(grid) {
-  const exitDetails = {};
+function findExitCells(grid: Grid) {
+  const exitDetails = new Map();
 
   grid.forEachCell(cell => {
     let direction;
-    if (direction = cell.metadata[Constants.METADATA_START_CELL]) {
-      exitDetails[Constants.METADATA_START_CELL] = [cell, direction];
+    if (direction = cell.metadata.get(Constants.METADATA_START_CELL)) {
+      exitDetails.set(Constants.METADATA_START_CELL, [cell, direction])
     }
-    if (direction = cell.metadata[Constants.METADATA_END_CELL]) {
-      exitDetails[Constants.METADATA_END_CELL] = [cell, direction];
+    if (direction = cell.metadata.get(Constants.METADATA_END_CELL)) {
+      exitDetails.set(Constants.METADATA_END_CELL, [cell, direction])
     }
   });
 
-  if (exitDetails[Constants.METADATA_START_CELL] && exitDetails[Constants.METADATA_END_CELL]) {
+  if (exitDetails.has(Constants.METADATA_START_CELL) && exitDetails.has(Constants.METADATA_END_CELL)) {
     return exitDetails;
   }
 }
@@ -118,19 +118,19 @@ function validateConfig(config) {
     throw new Error('missing/invalid "algorithm" property in config object');
   }
 
-  if (!config.element) {
-    throw new Error('missing/invalid "element" property in config object');
-  }
-  if (!['canvas', 'svg'].includes(config.element.tagName.toLowerCase())) {
-    throw new Error('invalid "element" property in config object', config.element.tagName.toLowerCase());
-  }
+  // if (!config.element) {
+  //   throw new Error('missing/invalid "element" property in config object');
+  // }
+  // if (!['canvas', 'svg'].includes(config.element.tagName.toLowerCase())) {
+  //   throw new Error('invalid "element" property in config object', config.element.tagName.toLowerCase());
+  // }
 }
 
-export function buildMaze(config) {
+export function buildMaze(config: Config) {
   validateConfig(config);
 
   const random = buildRandom(config.randomSeed || Date.now()),
-    grid = shapeLookup[config.grid.cellShape]({
+    configParam = {
       width: config.grid.width,
       height: config.grid.height,
       layers: config.grid.layers,
@@ -140,7 +140,8 @@ export function buildMaze(config) {
       //   el: config.element,
       //   lineWidth: config.lineWidth
       // })
-    }),
+    },
+    grid = shapeLookup[config.grid.cellShape](configParam),
     algorithm = algorithms[config.algorithm];
 
   grid.initialise();
@@ -151,7 +152,7 @@ export function buildMaze(config) {
   const iterator = algorithm.fn(grid, { random });
   grid.runAlgorithm = {
     oneStep() {
-      return iterator.next().done && (grid.placeExits() || true);
+      return iterator.next().done && grid.placeExits ? (grid.placeExits(), true) : false
     },
     toCompletion() {
       while (!iterator.next().done);
@@ -164,9 +165,9 @@ export function buildMaze(config) {
 
 export type Coord = [x: number, y: number]
 export interface Cell {
-  id: string,
-  coords: Coord[],
-  metadata: {},
+  id: string
+  coords: Coord[]
+  metadata: Map<Constants.MetadataKey, any>
   neighbours: Map<Constants.Direction, Cell>
   // {
   //   random(fnCriteria: () => boolean | undefined): Cell
@@ -176,31 +177,105 @@ export interface Cell {
   isLinkedTo(otherCell: Cell): boolean
   links: Array<Cell>
 }
+export interface AlgorithmRunner {
+  oneStep(): boolean
+  toCompletion(): void
+}
 export interface Grid {
-  isSquare?: boolean,
-  initialise?(): void,
-  placeExits?(): void,
+  isSquare?: boolean
+  runAlgorithm?: AlgorithmRunner
+  initialise?(): void
+  placeExits?(): void
   forEachCell(fn)
   getAllCellCoords(): Array<Coord>
   link(cell1: Cell, cell2: Cell)
-  metadata//: config
+  metadata?: GridMetadata
   randomCell(fnCriteria: () => boolean)
   addCell(...coords)
   removeCell(...coords)
   makeNeighbours(cell1WithDirection, cell2WithDirection)
   getCellByCoordinates(...coords)
-  get cellCount()
+  get cells(): Array<Cell>
+  get cellCount(): number
   on(eventName, handler)
   findPathBetween(fromCoords, toCoords)
-  findDistancesFrom(...coords)
+  findDistancesFrom(...coords: Array<Coord>): void
   clearDistances()
   clearPathAndSolution()
   clearMetadata(...keys)
   dispose()
 }
+export class GridConfig {
+  readonly cellShape: Constants.SquareGrid |
+    Constants.TriangleGrid |
+    Constants.HexagonGrid |
+    Constants.CircleGrid
+  readonly width?: number
+  readonly height?: number
+  readonly layers?: number
+
+  constructor(_layers: number)
+  constructor(
+    _cellShape: Constants.SquareGrid | Constants.TriangleGrid | Constants.HexagonGrid,
+    _width: number,
+    _height: number
+  )
+  constructor(
+    firstParam: number | Constants.SquareGrid | Constants.TriangleGrid | Constants.HexagonGrid,
+    _width?: number,
+    _height?: number
+  ) {
+    if (typeof firstParam === 'number') {
+      this.cellShape = 'circle'
+      this.layers = firstParam
+    } else {
+      this.cellShape = firstParam
+      this.width = _width
+      this.height = _height
+    }
+  }
+}
+// export class CircleConfig {
+//   readonly cellShape: Constants.CircleGrid = 'circle'
+//   readonly layers: number
+//
+//   constructor(_layers: number) {
+//     this.layers = _layers
+//   }
+// }
+// export class OtherConfig {
+//   readonly cellShape: Constants.SquareGrid | Constants.TriangleGrid | Constants.HexagonGrid
+//   readonly width: number
+//   readonly height: number
+//
+//   constructor(
+//     _cellShape: Constants.SquareGrid | Constants.TriangleGrid | Constants.HexagonGrid,
+//     _width: number,
+//     _height: number
+//   ) {
+//     this.cellShape = _cellShape
+//     this.width = _width
+//     this.height = _height
+//   }
+// }
+// export type GridConfig = CircleConfig | OtherConfig
+export interface Config {
+  grid: GridConfig
+  mask: Array<Coord>
+  algorithm: Constants.Algorithm
+  randomSeed?: number
+  exitConfig: Constants.ExitConfig
+}
+export interface GridMetadata extends GridConfig {
+}
+// export interface CircleGridMetadata extends CircleConfig {
+// }
+// export interface OtherGridMetadata extends OtherConfig {
+// }
+// export type GridMetadata = CircleGridMetadata | OtherGridMetadata
 function buildBaseGrid(config): Grid {
   "use strict";
-  const cells = {}, { random } = config;
+  const cells = new Map<string, Cell>, { random } = config;
 
   function makeIdFromCoords(coords: Array<Coord>): string {
     return coords.join(',');
@@ -210,7 +285,7 @@ function buildBaseGrid(config): Grid {
     const cell = { //TODO move methods outside so we only have 1 copy of each function
       id,
       coords,
-      metadata: {},
+      metadata: new Map(),
       neighbours: new Map(),
       // {
       //   random(fnCriteria = () => true) {
@@ -246,7 +321,8 @@ function buildBaseGrid(config): Grid {
 
   return {
     forEachCell(fn) {
-      Object.values(cells).forEach(fn);
+      // Object.values(cells).forEach(fn);
+      Array.from(cells.values()).forEach(fn)
     },
     getAllCellCoords() {
       const allCoords = [];
@@ -255,9 +331,11 @@ function buildBaseGrid(config): Grid {
     },
     link(cell1, cell2) {
       console.assert(cell1 !== cell2);
-      console.assert(Object.values(cell1.neighbours).includes(cell2));
+      // console.assert(Object.values(cell1.neighbours).includes(cell2));
+      console.assert(Array.from(cell1.neighbours.values()).includes(cell2))
       console.assert(!cell1.links.includes(cell2));
-      console.assert(Object.values(cell2.neighbours).includes(cell1));
+      // console.assert(Object.values(cell2.neighbours).includes(cell1));
+      console.assert(Array.from(cell2.neighbours.values()).includes(cell1))
       console.assert(!cell2.links.includes(cell1));
 
       cell1.links.push(cell2);
@@ -265,19 +343,23 @@ function buildBaseGrid(config): Grid {
     },
     metadata: config,
     randomCell(fnCriteria = () => true) {
-      return random.choice(Object.values(cells).filter(fnCriteria));
+      // return random.choice(Object.values(cells).filter(fnCriteria));
+      return random.choice(Array.from(cells.values()).filter(fnCriteria))
     },
     addCell(...coords) {
       const cell = buildCell(...coords),
         id = cell.id;
-      console.assert(!cells[id]);
-      cells[id] = cell;
+      // console.assert(!cells[id]);
+      // cells[id] = cell;
+      console.assert(!cells.has(id))
+      cells.set(id, cell)
       return id;
     },
     removeCell(...coords) {
       const cell = this.getCellByCoordinates(coords);
       removeNeighbours(cell);
-      delete cells[cell.id];
+      // delete cells[cell.id];
+      cells.delete(cell.id)
     },
     makeNeighbours(cell1WithDirection, cell2WithDirection) {
       const
@@ -290,15 +372,22 @@ function buildBaseGrid(config): Grid {
       console.assert(cell1Direction !== cell2Direction);
       console.assert(!cell1.neighbours[cell2Direction]);
       console.assert(!cell2.neighbours[cell1Direction]);
-      cell1.neighbours[cell2Direction] = cell2;
-      cell2.neighbours[cell1Direction] = cell1;
+      // cell1.neighbours[cell2Direction] = cell2;
+      cell1.neighbours.set(cell2Direction, cell2)
+      // cell2.neighbours[cell1Direction] = cell1;
+      cell2.neighbours.set(cell1Direction, cell1)
     },
     getCellByCoordinates(...coords) {
       const id = makeIdFromCoords(coords);
-      return cells[id];
+      // return cells[id];
+      return cells.get(id)
+    },
+    get cells() {
+      return Array.from(cells.values())
     },
     get cellCount() {
-      return Object.values(cells).length;
+      // return Object.values(cells).length;
+      return Array.from(cells.values()).length
     },
     on(eventName, handler) {
       eventTarget.on(eventName, handler);
@@ -312,31 +401,38 @@ function buildBaseGrid(config): Grid {
 
       path.push(currentCell.coords);
       while (currentCell !== endCell) {
-        const currentDistance = currentCell.metadata[Constants.METADATA_DISTANCE],
-          nextCell = Object.values(currentCell.neighbours)
+        // const currentDistance = currentCell.metadata[Constants.METADATA_DISTANCE],
+        const currentDistance = currentCell.metadata.get(Constants.METADATA_DISTANCE),
+          // nextCell = Object.values(currentCell.neighbours)
+          nextCell = Array.from(currentCell.neighbours.values())
             .filter(neighbour => currentCell.isLinkedTo(neighbour))
-            .find(neighbour => (neighbour.metadata || {})[Constants.METADATA_DISTANCE] === currentDistance - 1);
+            .find(neighbour => (neighbour.metadata || new Map()).get(Constants.METADATA_DISTANCE) === currentDistance - 1);
         path.push(nextCell.coords);
         currentCell = nextCell;
       }
       this.metadata[Constants.METADATA_PATH] = path;
       this.clearDistances();
     },
-    findDistancesFrom(...coords) {
+    findDistancesFrom(...coords: Array<Coord>) {
       this.clearDistances();
       const startCell = this.getCellByCoordinates(...coords);
-      startCell.metadata[Constants.METADATA_DISTANCE] = 0;
+      // startCell.metadata[Constants.METADATA_DISTANCE] = 0;
+      startCell.metadata.set(Constants.METADATA_DISTANCE, 0)
       const frontier = [startCell];
       let maxDistance = 0, maxDistancePoint;
-      while (frontier.length) {
+      while (frontier.length > 0) {
         const next: Cell = frontier.shift(),
-          frontierDistance = next.metadata[Constants.METADATA_DISTANCE];
-        const linkedUndistancedNeighbours = Object.values(next.neighbours)
-          .filter(neighbour => next.isLinkedTo(neighbour))
-          .filter(neighbour => neighbour.metadata[Constants.METADATA_DISTANCE] === undefined);
+          // frontierDistance = next.metadata[Constants.METADATA_DISTANCE];
+          frontierDistance = next.metadata.get(Constants.METADATA_DISTANCE)
+        // const neighbours = Object.values(next.neighbours)
+        const neighbours = Array.from(next.neighbours.values())
+        const linkedUndistancedNeighbours = neighbours.filter(neighbour => {
+          return next.isLinkedTo(neighbour)
+        })
+          .filter(neighbour => !neighbour.metadata.has(Constants.METADATA_DISTANCE));
 
         linkedUndistancedNeighbours.forEach(neighbour => {
-          neighbour.metadata[Constants.METADATA_DISTANCE] = frontierDistance + 1;
+          neighbour.metadata.set(Constants.METADATA_DISTANCE, frontierDistance + 1)
         });
         frontier.push(...linkedUndistancedNeighbours);
         if (linkedUndistancedNeighbours.length) {
@@ -346,7 +442,7 @@ function buildBaseGrid(config): Grid {
           maxDistance = Math.max(frontierDistance + 1, maxDistance);
         }
       }
-      this.metadata[Constants.METADATA_MAX_DISTANCE] = maxDistance;
+      this.metadata[Constants.METADATA_MAX_DISTANCE] = maxDistance
     },
     clearDistances() {
       this.clearMetadata(Constants.METADATA_DISTANCE);
@@ -502,7 +598,7 @@ export function buildSquareGrid(config) {
       grid.findDistancesFrom(startCell.coords);
 
       edgeCells.forEach(edgeCell => {
-        const distance = edgeCell.metadata[Constants.METADATA_DISTANCE];
+        const distance = edgeCell.metadata.get(Constants.METADATA_DISTANCE)
         if (distance > maxDistance) {
           maxDistance = distance;
           furthestEdgeCell = edgeCell;
@@ -517,8 +613,8 @@ export function buildSquareGrid(config) {
       endCell = findFurthestEdgeCellFrom(tmpStartCell),
       startCell = findFurthestEdgeCellFrom(endCell);
 
-    startCell.metadata[Constants.METADATA_START_CELL] = findRandomMissingNeighbourDirection(startCell);
-    endCell.metadata[Constants.METADATA_END_CELL] = findRandomMissingNeighbourDirection(endCell);
+    startCell.metadata.set(Constants.METADATA_START_CELL, findRandomMissingNeighbourDirection(startCell))
+    endCell.metadata.set(Constants.METADATA_END_CELL, findRandomMissingNeighbourDirection(endCell))
   }
 
   function findVerticalExits() {
@@ -531,8 +627,8 @@ export function buildSquareGrid(config) {
         maxY = Math.max(maxY, y);
       }
     });
-    grid.getCellByCoordinates(centerX, maxY).metadata[Constants.METADATA_START_CELL] = Constants.DIRECTION_SOUTH;
-    grid.getCellByCoordinates(centerX, minY).metadata[Constants.METADATA_END_CELL] = Constants.DIRECTION_NORTH;
+    grid.getCellByCoordinates(centerX, maxY).metadata.set(Constants.METADATA_START_CELL, Constants.DIRECTION_SOUTH)
+    grid.getCellByCoordinates(centerX, minY).metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_NORTH)
   }
 
   function findHorizontalExits() {
@@ -545,8 +641,8 @@ export function buildSquareGrid(config) {
         maxX = Math.max(maxX, x);
       }
     });
-    grid.getCellByCoordinates(minX, centerY).metadata[Constants.METADATA_START_CELL] = Constants.DIRECTION_WEST;
-    grid.getCellByCoordinates(maxX, centerY).metadata[Constants.METADATA_END_CELL] = Constants.DIRECTION_EAST;
+    grid.getCellByCoordinates(minX, centerY).metadata.set(Constants.METADATA_START_CELL, Constants.DIRECTION_WEST)
+    grid.getCellByCoordinates(maxX, centerY).metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_EAST)
   }
 
   grid.placeExits = function () {
@@ -798,7 +894,7 @@ export function buildTriangularGrid(config) {
       grid.findDistancesFrom(startCell.coords);
 
       edgeCells.forEach(edgeCell => {
-        const distance = edgeCell.metadata[Constants.METADATA_DISTANCE];
+        const distance = edgeCell.metadata.get(Constants.METADATA_DISTANCE)
         if (distance > maxDistance) {
           maxDistance = distance;
           furthestEdgeCell = edgeCell;
@@ -813,8 +909,8 @@ export function buildTriangularGrid(config) {
       endCell = findFurthestEdgeCellFrom(tmpStartCell),
       startCell = findFurthestEdgeCellFrom(endCell);
 
-    startCell.metadata[Constants.METADATA_START_CELL] = findRandomMissingNeighbourDirection(startCell);
-    endCell.metadata[Constants.METADATA_END_CELL] = findRandomMissingNeighbourDirection(endCell);
+    startCell.metadata.set(Constants.METADATA_START_CELL, findRandomMissingNeighbourDirection(startCell))
+    endCell.metadata.set(Constants.METADATA_END_CELL, findRandomMissingNeighbourDirection(endCell))
   }
 
   function findVerticalExits() {
@@ -836,8 +932,8 @@ export function buildTriangularGrid(config) {
         }
       }
     });
-    grid.getCellByCoordinates(startXCoord, maxY).metadata[Constants.METADATA_START_CELL] = Constants.DIRECTION_SOUTH;
-    grid.getCellByCoordinates(endXCoord, minY).metadata[Constants.METADATA_END_CELL] = Constants.DIRECTION_NORTH;
+    grid.getCellByCoordinates(startXCoord, maxY).metadata.set(Constants.METADATA_START_CELL, Constants.DIRECTION_SOUTH)
+    grid.getCellByCoordinates(endXCoord, minY).metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_NORTH)
   }
 
   function findHorizontalExits() {
@@ -850,8 +946,8 @@ export function buildTriangularGrid(config) {
         maxX = Math.max(maxX, x);
       }
     });
-    grid.getCellByCoordinates(minX, centerY).metadata[Constants.METADATA_START_CELL] = Constants.DIRECTION_WEST;
-    grid.getCellByCoordinates(maxX, centerY).metadata[Constants.METADATA_END_CELL] = Constants.DIRECTION_EAST;
+    grid.getCellByCoordinates(minX, centerY).metadata.set(Constants.METADATA_START_CELL, Constants.DIRECTION_WEST)
+    grid.getCellByCoordinates(maxX, centerY).metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_EAST)
   }
 
   grid.placeExits = function () {
@@ -1122,7 +1218,7 @@ export function buildHexagonalGrid(config) {
       grid.findDistancesFrom(startCell.coords);
 
       edgeCells.forEach(edgeCell => {
-        const distance = edgeCell.metadata[Constants.METADATA_DISTANCE];
+        const distance = edgeCell.metadata.get(Constants.METADATA_DISTANCE)
         if (distance > maxDistance) {
           maxDistance = distance;
           furthestEdgeCell = edgeCell;
@@ -1137,8 +1233,8 @@ export function buildHexagonalGrid(config) {
       endCell = findFurthestEdgeCellFrom(tmpStartCell),
       startCell = findFurthestEdgeCellFrom(endCell);
 
-    startCell.metadata[Constants.METADATA_START_CELL] = findRandomMissingNeighbourDirection(startCell);
-    endCell.metadata[Constants.METADATA_END_CELL] = findRandomMissingNeighbourDirection(endCell);
+    startCell.metadata.set(Constants.METADATA_START_CELL, findRandomMissingNeighbourDirection(startCell))
+    endCell.metadata.set(Constants.METADATA_END_CELL, findRandomMissingNeighbourDirection(endCell))
   }
 
   function findVerticalExits() {
@@ -1151,8 +1247,8 @@ export function buildHexagonalGrid(config) {
         maxY = Math.max(maxY, y);
       }
     });
-    grid.getCellByCoordinates(centerX, maxY).metadata[Constants.METADATA_START_CELL] = Constants.DIRECTION_SOUTH_EAST;
-    grid.getCellByCoordinates(centerX, minY).metadata[Constants.METADATA_END_CELL] = Constants.DIRECTION_NORTH_EAST;
+    grid.getCellByCoordinates(centerX, maxY).metadata.set(Constants.METADATA_START_CELL, Constants.DIRECTION_SOUTH_EAST)
+    grid.getCellByCoordinates(centerX, minY).metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_NORTH_EAST)
   }
 
   function findHorizontalExits() {
@@ -1165,8 +1261,8 @@ export function buildHexagonalGrid(config) {
         maxX = Math.max(maxX, x);
       }
     });
-    grid.getCellByCoordinates(minX, centerY).metadata[Constants.METADATA_START_CELL] = Constants.DIRECTION_WEST;
-    grid.getCellByCoordinates(maxX, centerY).metadata[Constants.METADATA_END_CELL] = Constants.DIRECTION_EAST;
+    grid.getCellByCoordinates(minX, centerY).metadata.set(Constants.METADATA_START_CELL, Constants.DIRECTION_WEST)
+    grid.getCellByCoordinates(maxX, centerY).metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_EAST)
   }
 
   grid.placeExits = function () {
@@ -1203,8 +1299,8 @@ export function buildCircularGrid(config) {
     cellCounts = cellCountsForLayers(config.layers);//,
   // { drawingSurface: defaultDrawingSurface } = config;
 
-  const cx = grid.metadata.layers,
-    cy = grid.metadata.layers;
+  // const cx = grid.metadata.layers,
+  // cy = grid.metadata.layers;
 
   // defaultDrawingSurface.on(Constants.EVENT_CLICK, event => {
   //   const xDistance = event.x - cx,
@@ -1568,7 +1664,7 @@ export function buildCircularGrid(config) {
   // };
 
   function findHardestExits() {
-    let edgeCells = [];
+    let edgeCells: Array<Cell> = [];
 
     grid.forEachCell(cell => {
       if (!cell.neighbours[`${Constants.DIRECTION_OUTWARDS}_0`] && !cell.neighbours[`${Constants.DIRECTION_OUTWARDS}_1`]) {
@@ -1582,7 +1678,7 @@ export function buildCircularGrid(config) {
       grid.findDistancesFrom(startCell.coords);
 
       edgeCells.forEach(edgeCell => {
-        const distance = edgeCell.metadata[Constants.METADATA_DISTANCE];
+        const distance = edgeCell.metadata.get(Constants.METADATA_DISTANCE)
         if (distance > maxDistance) {
           maxDistance = distance;
           furthestEdgeCell = edgeCell;
@@ -1596,19 +1692,19 @@ export function buildCircularGrid(config) {
     const endCell = grid.getCellByCoordinates(0, 0),
       startCell = findFurthestEdgeCellFrom(endCell);
 
-    startCell.metadata[Constants.METADATA_START_CELL] = Constants.DIRECTION_OUTWARDS;
-    endCell.metadata[Constants.METADATA_END_CELL] = Constants.DIRECTION_OUTWARDS;
+    startCell.metadata.set(Constants.METADATA_START_CELL, Constants.DIRECTION_OUTWARDS)
+    endCell.metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_OUTWARDS)
   }
 
   function findVerticalExits() {
-    grid.getCellByCoordinates(0, 0).metadata[Constants.METADATA_END_CELL] = Constants.DIRECTION_OUTWARDS;
+    grid.getCellByCoordinates(0, 0).metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_OUTWARDS)
 
     let layerIndex = grid.metadata.layers - 1;
     while (layerIndex > 0) {
       const bottomCellIndex = cellCounts[layerIndex] / 2,
         bottomCellOnThisLayer = grid.getCellByCoordinates(layerIndex, bottomCellIndex);
       if (bottomCellOnThisLayer) {
-        bottomCellOnThisLayer.metadata[Constants.METADATA_START_CELL] = Constants.DIRECTION_OUTWARDS;
+        bottomCellOnThisLayer.metadata.set(Constants.METADATA_START_CELL, Constants.DIRECTION_OUTWARDS)
         return;
       }
       layerIndex--;
@@ -1616,14 +1712,14 @@ export function buildCircularGrid(config) {
   }
 
   function findHorizontalExits() {
-    grid.getCellByCoordinates(0, 0).metadata[Constants.METADATA_END_CELL] = Constants.DIRECTION_OUTWARDS;
+    grid.getCellByCoordinates(0, 0).metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_OUTWARDS)
 
     let layerIndex = grid.metadata.layers - 1;
     while (layerIndex > 0) {
       const leftCellIndex = Math.round(0.75 * cellCounts[layerIndex]),
         leftCellOnThisLayer = grid.getCellByCoordinates(layerIndex, leftCellIndex);
       if (leftCellOnThisLayer) {
-        leftCellOnThisLayer.metadata[Constants.METADATA_START_CELL] = Constants.DIRECTION_OUTWARDS;
+        leftCellOnThisLayer.metadata.set(Constants.METADATA_START_CELL, Constants.DIRECTION_OUTWARDS)
         return;
       }
       layerIndex--;

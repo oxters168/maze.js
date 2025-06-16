@@ -59,9 +59,13 @@ export const
   CELL_PLAYER_CURRENT_COLOUR = PATH_COLOUR,
   CELL_PLAYER_VISITED_COLOUR = PATH_COLOUR + '44',
   CELL_CURRENT_CELL_COLOUR = PATH_COLOUR,
-  WALL_COLOUR = 'black';
+  WALL_COLOUR = 'black'
 
-export type GridType = typeof SHAPE_SQUARE | typeof SHAPE_TRIANGLE | typeof SHAPE_HEXAGON | typeof SHAPE_CIRCLE;
+export type CircleGrid = typeof SHAPE_CIRCLE
+export type SquareGrid = typeof SHAPE_SQUARE
+export type TriangleGrid = typeof SHAPE_TRIANGLE
+export type HexagonGrid = typeof SHAPE_HEXAGON
+export type GridType = SquareGrid | TriangleGrid | HexagonGrid | CircleGrid
 
 export type Algorithm = typeof ALGORITHM_NONE |
   typeof ALGORITHM_BINARY_TREE |
@@ -86,6 +90,23 @@ export type Direction = typeof DIRECTION_NORTH |
   typeof DIRECTION_CLOCKWISE |
   typeof DIRECTION_ANTICLOCKWISE |
   typeof DIRECTION_INWARDS |
-  typeof DIRECTION_OUTWARDS;
+  typeof DIRECTION_OUTWARDS
 
 export type MazeEvent = typeof EVENT_CLICK | typeof EVENT_MOUSE_OVER
+
+export type ExitConfig = typeof EXITS_NONE | typeof EXITS_HARDEST | typeof EXITS_HORIZONTAL | typeof EXITS_VERTICAL
+
+export type MetadataKey = typeof METADATA_VISITED |
+  typeof METADATA_SET_ID |
+  typeof METADATA_MAX_DISTANCE |
+  typeof METADATA_DISTANCE |
+  typeof METADATA_PATH |
+  typeof METADATA_MASKED |
+  typeof METADATA_CURRENT_CELL |
+  typeof METADATA_UNPROCESSED_CELL |
+  typeof METADATA_START_CELL |
+  typeof METADATA_END_CELL |
+  typeof METADATA_COST |
+  typeof METADATA_PLAYER_CURRENT |
+  typeof METADATA_PLAYER_VISITED |
+  typeof METADATA_RAW_COORDS
