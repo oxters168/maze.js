@@ -166,7 +166,7 @@ export function buildMaze(config: Config) {
 export type Coord = [x: number, y: number]
 export interface Cell {
   id: string
-  coords: Coord[]
+  coords: Coord
   metadata: Map<Constants.MetadataKey, any>
   neighbours: Map<Constants.Direction, Cell>
   // {
@@ -191,15 +191,15 @@ export interface Grid {
   link(cell1: Cell, cell2: Cell)
   metadata?: GridMetadata
   randomCell(fnCriteria: () => boolean)
-  addCell(...coords)
-  removeCell(...coords)
+  addCell(coords)
+  removeCell(coords)
   makeNeighbours(cell1WithDirection, cell2WithDirection)
-  getCellByCoordinates(...coords)
+  getCellByCoordinates(coords)
   get cells(): Array<Cell>
   get cellCount(): number
   on(eventName, handler)
   findPathBetween(fromCoords, toCoords)
-  findDistancesFrom(...coords: Array<Coord>): void
+  findDistancesFrom(coords: Coord): void
   clearDistances()
   clearPathAndSolution()
   clearMetadata(...keys)
@@ -277,10 +277,11 @@ function buildBaseGrid(config): Grid {
   "use strict";
   const cells = new Map<string, Cell>, { random } = config;
 
-  function makeIdFromCoords(coords: Array<Coord>): string {
-    return coords.join(',');
+  function makeIdFromCoords(coords: Coord): string {
+    return `${coords[0]},${coords[1]}`
+    // return coords.join(',');
   }
-  function buildCell(...coords: Array<Coord>): Cell {
+  function buildCell(coords: Coord): Cell {
     const id = makeIdFromCoords(coords);
     const cell = { //TODO move methods outside so we only have 1 copy of each function
       id,
@@ -346,8 +347,8 @@ function buildBaseGrid(config): Grid {
       // return random.choice(Object.values(cells).filter(fnCriteria));
       return random.choice(Array.from(cells.values()).filter(fnCriteria))
     },
-    addCell(...coords) {
-      const cell = buildCell(...coords),
+    addCell(coords: Coord) {
+      const cell = buildCell(coords),
         id = cell.id;
       // console.assert(!cells[id]);
       // cells[id] = cell;
@@ -355,7 +356,7 @@ function buildBaseGrid(config): Grid {
       cells.set(id, cell)
       return id;
     },
-    removeCell(...coords) {
+    removeCell(coords) {
       const cell = this.getCellByCoordinates(coords);
       removeNeighbours(cell);
       // delete cells[cell.id];
@@ -377,7 +378,7 @@ function buildBaseGrid(config): Grid {
       // cell2.neighbours[cell1Direction] = cell1;
       cell2.neighbours.set(cell1Direction, cell1)
     },
-    getCellByCoordinates(...coords) {
+    getCellByCoordinates(coords: Coord) {
       const id = makeIdFromCoords(coords);
       // return cells[id];
       return cells.get(id)
@@ -392,10 +393,10 @@ function buildBaseGrid(config): Grid {
     on(eventName, handler) {
       eventTarget.on(eventName, handler);
     },
-    findPathBetween(fromCoords, toCoords) {
-      this.findDistancesFrom(...toCoords);
-      let currentCell: Cell = this.getCellByCoordinates(...fromCoords),
-        endCell = this.getCellByCoordinates(...toCoords);
+    findPathBetween(fromCoords: Coord, toCoords: Coord) {
+      this.findDistancesFrom(toCoords);
+      let currentCell: Cell = this.getCellByCoordinates(fromCoords),
+        endCell = this.getCellByCoordinates(toCoords);
 
       const path = [];
 
@@ -413,9 +414,9 @@ function buildBaseGrid(config): Grid {
       this.metadata[Constants.METADATA_PATH] = path;
       this.clearDistances();
     },
-    findDistancesFrom(...coords: Array<Coord>) {
+    findDistancesFrom(coords: Coord) {
       this.clearDistances();
-      const startCell = this.getCellByCoordinates(...coords);
+      const startCell = this.getCellByCoordinates(coords);
       // startCell.metadata[Constants.METADATA_DISTANCE] = 0;
       startCell.metadata.set(Constants.METADATA_DISTANCE, 0)
       const frontier = [startCell];
@@ -490,14 +491,14 @@ export function buildSquareGrid(config) {
   grid.initialise = function () {
     for (let x = 0; x < config.width; x++) {
       for (let y = 0; y < config.height; y++) {
-        grid.addCell(x, y);
+        grid.addCell([x, y]);
       }
     }
     for (let x = 0; x < config.width; x++) {
       for (let y = 0; y < config.height; y++) {
-        const cell = grid.getCellByCoordinates(x, y),
-          eastNeighbour = grid.getCellByCoordinates(x + 1, y),
-          southNeighbour = grid.getCellByCoordinates(x, y + 1);
+        const cell = grid.getCellByCoordinates([x, y]),
+          eastNeighbour = grid.getCellByCoordinates([x + 1, y]),
+          southNeighbour = grid.getCellByCoordinates([x, y + 1]);
         if (eastNeighbour) {
           grid.makeNeighbours({ cell, direction: Constants.DIRECTION_WEST }, { cell: eastNeighbour, direction: Constants.DIRECTION_EAST });
         }
@@ -579,20 +580,20 @@ export function buildSquareGrid(config) {
   function findHardestExits() {
     let edgeCells = [];
 
-    grid.forEachCell(cell => {
-      const [x, y] = cell.coords;
+    grid.forEachCell((cell: Cell) => {
+      // const [x, y] = cell.coords;
 
-      if (cell.neighbours.toArray().length !== 4) {
+      if (cell.neighbours.size !== 4) {
         edgeCells.push(cell);
       }
     });
 
-    function findRandomMissingNeighbourDirection(cell) {
+    function findRandomMissingNeighbourDirection(cell: Cell): number {
       const missingNeighbourDirections = [Constants.DIRECTION_NORTH, Constants.DIRECTION_SOUTH, Constants.DIRECTION_EAST, Constants.DIRECTION_WEST].filter(direction => !cell.neighbours[direction]);
       return config.random.choice(missingNeighbourDirections);
     }
 
-    function findFurthestEdgeCellFrom(startCell) {
+    function findFurthestEdgeCellFrom(startCell: Cell) {
       let maxDistance = 0, furthestEdgeCell;
 
       grid.findDistancesFrom(startCell.coords);
@@ -627,8 +628,8 @@ export function buildSquareGrid(config) {
         maxY = Math.max(maxY, y);
       }
     });
-    grid.getCellByCoordinates(centerX, maxY).metadata.set(Constants.METADATA_START_CELL, Constants.DIRECTION_SOUTH)
-    grid.getCellByCoordinates(centerX, minY).metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_NORTH)
+    grid.getCellByCoordinates([centerX, maxY]).metadata.set(Constants.METADATA_START_CELL, Constants.DIRECTION_SOUTH)
+    grid.getCellByCoordinates([centerX, minY]).metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_NORTH)
   }
 
   function findHorizontalExits() {
@@ -641,8 +642,8 @@ export function buildSquareGrid(config) {
         maxX = Math.max(maxX, x);
       }
     });
-    grid.getCellByCoordinates(minX, centerY).metadata.set(Constants.METADATA_START_CELL, Constants.DIRECTION_WEST)
-    grid.getCellByCoordinates(maxX, centerY).metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_EAST)
+    grid.getCellByCoordinates([minX, centerY]).metadata.set(Constants.METADATA_START_CELL, Constants.DIRECTION_WEST)
+    grid.getCellByCoordinates([maxX, centerY]).metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_EAST)
   }
 
   grid.placeExits = function () {
@@ -732,14 +733,14 @@ export function buildTriangularGrid(config) {
   grid.initialise = function () {
     for (let x = 0; x < config.width; x++) {
       for (let y = 0; y < config.height; y++) {
-        grid.addCell(x, y);
+        grid.addCell([x, y]);
       }
     }
     for (let x = 0; x < config.width; x++) {
       for (let y = 0; y < config.height; y++) {
-        const cell = grid.getCellByCoordinates(x, y),
-          eastNeighbour = grid.getCellByCoordinates(x + 1, y),
-          southNeighbour = hasBaseOnSouthSide(x, y) && grid.getCellByCoordinates(x, y + 1);
+        const cell = grid.getCellByCoordinates([x, y]),
+          eastNeighbour = grid.getCellByCoordinates([x + 1, y]),
+          southNeighbour = hasBaseOnSouthSide(x, y) && grid.getCellByCoordinates([x, y + 1]);
         if (eastNeighbour) {
           grid.makeNeighbours({ cell, direction: Constants.DIRECTION_WEST }, { cell: eastNeighbour, direction: Constants.DIRECTION_EAST });
         }
@@ -932,8 +933,8 @@ export function buildTriangularGrid(config) {
         }
       }
     });
-    grid.getCellByCoordinates(startXCoord, maxY).metadata.set(Constants.METADATA_START_CELL, Constants.DIRECTION_SOUTH)
-    grid.getCellByCoordinates(endXCoord, minY).metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_NORTH)
+    grid.getCellByCoordinates([startXCoord, maxY]).metadata.set(Constants.METADATA_START_CELL, Constants.DIRECTION_SOUTH)
+    grid.getCellByCoordinates([endXCoord, minY]).metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_NORTH)
   }
 
   function findHorizontalExits() {
@@ -946,8 +947,8 @@ export function buildTriangularGrid(config) {
         maxX = Math.max(maxX, x);
       }
     });
-    grid.getCellByCoordinates(minX, centerY).metadata.set(Constants.METADATA_START_CELL, Constants.DIRECTION_WEST)
-    grid.getCellByCoordinates(maxX, centerY).metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_EAST)
+    grid.getCellByCoordinates([minX, centerY]).metadata.set(Constants.METADATA_START_CELL, Constants.DIRECTION_WEST)
+    grid.getCellByCoordinates([maxX, centerY]).metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_EAST)
   }
 
   grid.placeExits = function () {
@@ -1061,16 +1062,16 @@ export function buildHexagonalGrid(config) {
   grid.initialise = function () {
     for (let x = 0; x < config.width; x++) {
       for (let y = 0; y < config.height; y++) {
-        grid.addCell(x, y);
+        grid.addCell([x, y]);
       }
     }
     for (let x = 0; x < config.width; x++) {
       for (let y = 0; y < config.height; y++) {
-        const cell = grid.getCellByCoordinates(x, y),
+        const cell = grid.getCellByCoordinates([x, y]),
           rowBasedXOffset = ((y + 1) % 2),
-          eastNeighbour = grid.getCellByCoordinates(x + 1, y),
-          southWestNeighbour = grid.getCellByCoordinates(x - rowBasedXOffset, y + 1),
-          southEastNeighbour = grid.getCellByCoordinates(x + 1 - rowBasedXOffset, y + 1);
+          eastNeighbour = grid.getCellByCoordinates([x + 1, y]),
+          southWestNeighbour = grid.getCellByCoordinates([x - rowBasedXOffset, y + 1]),
+          southEastNeighbour = grid.getCellByCoordinates([x + 1 - rowBasedXOffset, y + 1]);
 
         if (eastNeighbour) {
           grid.makeNeighbours({ cell, direction: Constants.DIRECTION_WEST }, { cell: eastNeighbour, direction: Constants.DIRECTION_EAST });
@@ -1247,8 +1248,8 @@ export function buildHexagonalGrid(config) {
         maxY = Math.max(maxY, y);
       }
     });
-    grid.getCellByCoordinates(centerX, maxY).metadata.set(Constants.METADATA_START_CELL, Constants.DIRECTION_SOUTH_EAST)
-    grid.getCellByCoordinates(centerX, minY).metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_NORTH_EAST)
+    grid.getCellByCoordinates([centerX, maxY]).metadata.set(Constants.METADATA_START_CELL, Constants.DIRECTION_SOUTH_EAST)
+    grid.getCellByCoordinates([centerX, minY]).metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_NORTH_EAST)
   }
 
   function findHorizontalExits() {
@@ -1261,8 +1262,8 @@ export function buildHexagonalGrid(config) {
         maxX = Math.max(maxX, x);
       }
     });
-    grid.getCellByCoordinates(minX, centerY).metadata.set(Constants.METADATA_START_CELL, Constants.DIRECTION_WEST)
-    grid.getCellByCoordinates(maxX, centerY).metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_EAST)
+    grid.getCellByCoordinates([minX, centerY]).metadata.set(Constants.METADATA_START_CELL, Constants.DIRECTION_WEST)
+    grid.getCellByCoordinates([maxX, centerY]).metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_EAST)
   }
 
   grid.placeExits = function () {
@@ -1338,17 +1339,17 @@ export function buildCircularGrid(config) {
     for (let l = 0; l < config.layers; l++) {
       const cellsInLayer = cellCounts[l];
       for (let c = 0; c < cellsInLayer; c++) {
-        grid.addCell(l, c);
+        grid.addCell([l, c]);
       }
     }
 
     for (let l = 0; l < config.layers; l++) {
       const cellsInLayer = cellCounts[l];
       for (let c = 0; c < cellsInLayer; c++) {
-        const cell = grid.getCellByCoordinates(l, c);
+        const cell = grid.getCellByCoordinates([l, c]);
         if (cellsInLayer > 1) {
-          const clockwiseNeighbour = grid.getCellByCoordinates(l, (c + 1) % cellsInLayer),
-            anticlockwiseNeighbour = grid.getCellByCoordinates(l, (c + cellsInLayer - 1) % cellsInLayer);
+          const clockwiseNeighbour = grid.getCellByCoordinates([l, (c + 1) % cellsInLayer]),
+            anticlockwiseNeighbour = grid.getCellByCoordinates([l, (c + cellsInLayer - 1) % cellsInLayer]);
           grid.makeNeighbours({ cell, direction: Constants.DIRECTION_CLOCKWISE }, { cell: anticlockwiseNeighbour, direction: Constants.DIRECTION_ANTICLOCKWISE });
         }
 
@@ -1356,7 +1357,7 @@ export function buildCircularGrid(config) {
           const cellsInNextLayer = cellCounts[l + 1],
             outerNeighbourCount = cellsInNextLayer / cellsInLayer;
           for (let o = 0; o < outerNeighbourCount; o++) {
-            const outerNeighbour = grid.getCellByCoordinates(l + 1, c * outerNeighbourCount + o);
+            const outerNeighbour = grid.getCellByCoordinates([l + 1, c * outerNeighbourCount + o]);
             grid.makeNeighbours({ cell, direction: Constants.DIRECTION_INWARDS }, { cell: outerNeighbour, direction: `${Constants.DIRECTION_OUTWARDS}_${o}` });
           }
         }
@@ -1689,7 +1690,7 @@ export function buildCircularGrid(config) {
       return furthestEdgeCell;
     }
 
-    const endCell = grid.getCellByCoordinates(0, 0),
+    const endCell = grid.getCellByCoordinates([0, 0]),
       startCell = findFurthestEdgeCellFrom(endCell);
 
     startCell.metadata.set(Constants.METADATA_START_CELL, Constants.DIRECTION_OUTWARDS)
@@ -1697,12 +1698,12 @@ export function buildCircularGrid(config) {
   }
 
   function findVerticalExits() {
-    grid.getCellByCoordinates(0, 0).metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_OUTWARDS)
+    grid.getCellByCoordinates([0, 0]).metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_OUTWARDS)
 
     let layerIndex = grid.metadata.layers - 1;
     while (layerIndex > 0) {
       const bottomCellIndex = cellCounts[layerIndex] / 2,
-        bottomCellOnThisLayer = grid.getCellByCoordinates(layerIndex, bottomCellIndex);
+        bottomCellOnThisLayer = grid.getCellByCoordinates([layerIndex, bottomCellIndex]);
       if (bottomCellOnThisLayer) {
         bottomCellOnThisLayer.metadata.set(Constants.METADATA_START_CELL, Constants.DIRECTION_OUTWARDS)
         return;
@@ -1712,12 +1713,12 @@ export function buildCircularGrid(config) {
   }
 
   function findHorizontalExits() {
-    grid.getCellByCoordinates(0, 0).metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_OUTWARDS)
+    grid.getCellByCoordinates([0, 0]).metadata.set(Constants.METADATA_END_CELL, Constants.DIRECTION_OUTWARDS)
 
     let layerIndex = grid.metadata.layers - 1;
     while (layerIndex > 0) {
       const leftCellIndex = Math.round(0.75 * cellCounts[layerIndex]),
-        leftCellOnThisLayer = grid.getCellByCoordinates(layerIndex, leftCellIndex);
+        leftCellOnThisLayer = grid.getCellByCoordinates([layerIndex, leftCellIndex]);
       if (leftCellOnThisLayer) {
         leftCellOnThisLayer.metadata.set(Constants.METADATA_START_CELL, Constants.DIRECTION_OUTWARDS)
         return;
