@@ -189,7 +189,7 @@ export interface Grid {
   forEachCell(fn)
   getAllCellCoords(): Array<Coord>
   link(cell1: Cell, cell2: Cell)
-  metadata?: GridMetadata
+  metadata?: GridConfig
   randomCell(fnCriteria: () => boolean)
   addCell(coords)
   removeCell(coords)
@@ -235,44 +235,13 @@ export class GridConfig {
     }
   }
 }
-// export class CircleConfig {
-//   readonly cellShape: Constants.CircleGrid = 'circle'
-//   readonly layers: number
-//
-//   constructor(_layers: number) {
-//     this.layers = _layers
-//   }
-// }
-// export class OtherConfig {
-//   readonly cellShape: Constants.SquareGrid | Constants.TriangleGrid | Constants.HexagonGrid
-//   readonly width: number
-//   readonly height: number
-//
-//   constructor(
-//     _cellShape: Constants.SquareGrid | Constants.TriangleGrid | Constants.HexagonGrid,
-//     _width: number,
-//     _height: number
-//   ) {
-//     this.cellShape = _cellShape
-//     this.width = _width
-//     this.height = _height
-//   }
-// }
-// export type GridConfig = CircleConfig | OtherConfig
 export interface Config {
   grid: GridConfig
-  mask: Array<Coord>
+  mask?: Array<Coord>
   algorithm: Constants.Algorithm
   randomSeed?: number
   exitConfig: Constants.ExitConfig
 }
-export interface GridMetadata extends GridConfig {
-}
-// export interface CircleGridMetadata extends CircleConfig {
-// }
-// export interface OtherGridMetadata extends OtherConfig {
-// }
-// export type GridMetadata = CircleGridMetadata | OtherGridMetadata
 function buildBaseGrid(config): Grid {
   "use strict";
   const cells = new Map<string, Cell>, { random } = config;
