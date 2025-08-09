@@ -6,38 +6,38 @@ import {
   DIRECTION_EAST, DIRECTION_SOUTH,
   SHAPE_SQUARE, SHAPE_TRIANGLE, SHAPE_HEXAGON, SHAPE_CIRCLE
 } from './constants';
-import { Cell } from './maze';
+import { Cell, Grid } from './maze';
 import _ from 'lodash'
 
-function markAsVisited(cell) {
-  cell.metadata[METADATA_VISITED] = true;
+function markAsVisited(cell: Cell) {
+  cell.metadata.set(METADATA_VISITED, true);
 }
 
-function isVisited(cell) {
-  return cell.metadata[METADATA_VISITED];
+function isVisited(cell: Cell) {
+  return cell.metadata.get(METADATA_VISITED);
 }
 
-function isUnvisited(cell) {
+function isUnvisited(cell: Cell) {
   return !isVisited(cell);
 }
 
-function algorithmProgress(grid) {
-  let previousCells;
+function algorithmProgress(grid: Grid) {
+  let previousCells: Array<Cell>;
 
-  grid.forEachCell(cell => cell.metadata[METADATA_UNPROCESSED_CELL] = true);
+  grid.forEachCell((cell: Cell) => cell.metadata.set(METADATA_UNPROCESSED_CELL, true));
 
   return {
-    step(...cells) {
+    step(...cells: Array<Cell>) {
       this.current(...cells);
-      cells.forEach(cell => delete cell.metadata[METADATA_UNPROCESSED_CELL]);
+      cells.forEach(cell => cell.metadata.delete(METADATA_UNPROCESSED_CELL));
     },
-    current(...cells) {
-      (previousCells || []).forEach(previousCell => delete previousCell.metadata[METADATA_CURRENT_CELL]);
-      cells.forEach(cell => cell.metadata[METADATA_CURRENT_CELL] = true);
+    current(...cells: Array<Cell>) {
+      (previousCells || []).forEach(previousCell => previousCell.metadata.delete(METADATA_CURRENT_CELL));
+      cells.forEach(cell => cell.metadata.set(METADATA_CURRENT_CELL, true));
       previousCells = cells;
     },
     finished() {
-      (previousCells || []).forEach(previousCell => delete previousCell.metadata[METADATA_CURRENT_CELL]);
+      (previousCells || []).forEach(previousCell => previousCell.metadata.delete(METADATA_CURRENT_CELL));
     }
   };
 }
@@ -170,7 +170,7 @@ export const algorithms = {
 
       function markVisited(cell) {
         progress.step(cell);
-        cell.metadata[METADATA_VISITED] = true;
+        cell.metadata.set(METADATA_VISITED, true);
       }
       function removeLoops(cells) {
         const latestCell = cells[cells.length - 1],
@@ -254,7 +254,7 @@ export const algorithms = {
       const stack = [], progress = algorithmProgress(grid);
       let currentCell;
 
-      function visitCell(nextCell) {
+      function visitCell(nextCell: Cell) {
         const previousCell = currentCell;
         currentCell = nextCell;
         markAsVisited(currentCell);
@@ -301,7 +301,7 @@ export const algorithms = {
         connectedSets = {},
         progress = algorithmProgress(grid);
 
-      grid.forEachCell(cell => {
+      grid.forEachCell((cell: Cell) => {
         const
           eastNeighbour = cell.neighbours[DIRECTION_EAST],
           southNeighbour = cell.neighbours[DIRECTION_SOUTH];
@@ -312,7 +312,7 @@ export const algorithms = {
         if (southNeighbour) {
           links.push([cell, southNeighbour]);
         }
-        cell.metadata[METADATA_SET_ID] = cell.id;
+        cell.metadata.set(METADATA_SET_ID, cell.id);
         connectedSets[cell.id] = [cell];
       });
 
@@ -320,7 +320,7 @@ export const algorithms = {
 
       function mergeSets(id1, id2) {
         connectedSets[id2].forEach(cell => {
-          cell.metadata[METADATA_SET_ID] = id1;
+          cell.metadata.set(METADATA_SET_ID, id1);
           connectedSets[id1].push(cell);
         });
         delete connectedSets[id2];
@@ -328,8 +328,8 @@ export const algorithms = {
 
       while (links.length) {
         const [cell1, cell2] = links.pop(),
-          id1 = cell1.metadata[METADATA_SET_ID],
-          id2 = cell2.metadata[METADATA_SET_ID];
+          id1 = cell1.metadata.get(METADATA_SET_ID),
+          id2 = cell2.metadata.get(METADATA_SET_ID);
         if (id1 !== id2) {
           grid.link(cell1, cell2);
           mergeSets(id1, id2);
@@ -348,9 +348,9 @@ export const algorithms = {
       'shapes': [SHAPE_SQUARE, SHAPE_TRIANGLE, SHAPE_HEXAGON, SHAPE_CIRCLE]
     },
     fn: function* (grid, config) {
-      function addToActive(cell) {
+      function addToActive(cell: Cell) {
         active.push(cell);
-        cell.metadata[METADATA_VISITED] = true;
+        cell.metadata.set(METADATA_VISITED, true);
         progress.step(cell);
       }
       const { random } = config,
@@ -385,20 +385,20 @@ export const algorithms = {
     fn: function* (grid, config) {
       function addToActive(cell: Cell): void {
         active.push(cell);
-        cell.metadata[METADATA_VISITED] = true;
+        cell.metadata.set(METADATA_VISITED, true);
         progress.step(cell);
       }
 
       function getCellWithLowestCost(cells: Array<Cell>): Cell {
-        return cells.sort((n1, n2) => n1.metadata[METADATA_COST] - n2.metadata[METADATA_COST])[0]
+        return cells.sort((n1, n2) => n1.metadata.get(METADATA_COST) - n2.metadata.get(METADATA_COST))[0]
       }
 
       const { random } = config,
         progress = algorithmProgress(grid),
         active = [];
 
-      grid.forEachCell(cell => {
-        cell.metadata[METADATA_COST] = random.int(grid.cellCount);
+      grid.forEachCell((cell: Cell) => {
+        cell.metadata.set(METADATA_COST, random.int(grid.cellCount));
       });
 
       addToActive(grid.randomCell());
@@ -437,8 +437,8 @@ export const algorithms = {
         { width, height } = grid.metadata;
       let nextSetId = 1;
 
-      function addCellToSet(setId, cell) {
-        cell.metadata[METADATA_SET_ID] = setId;
+      function addCellToSet(setId, cell: Cell) {
+        cell.metadata.set(METADATA_SET_ID, setId);
         if (!sets[setId]) {
           sets[setId] = [];
         }
@@ -450,27 +450,27 @@ export const algorithms = {
         const set1 = sets[setId1],
           set2 = sets[setId2];
         console.assert(set1.length && set2.length);
-        set2.forEach(cell => addCellToSet(setId1, cell));
+        set2.forEach((cell: Cell) => addCellToSet(setId1, cell));
         delete sets[setId2];
       }
 
-      function linkToCellBelow(cell) {
+      function linkToCellBelow(cell: Cell) {
         const [x, y] = cell.coords,
           cellBelow = grid.getCellByCoordinates(x, y + 1);
         grid.link(cell, cellBelow);
-        addCellToSet(cell.metadata[METADATA_SET_ID], cellBelow);
+        addCellToSet(cell.metadata.get(METADATA_SET_ID), cellBelow);
       }
 
       function mergeCellsInRow(y, oddsOfMerge = 1) {
         for (let i = 0; i < width - 1; i++) {
           const cell1 = grid.getCellByCoordinates(i, y),
             cell2 = grid.getCellByCoordinates(i + 1, y),
-            cell1SetId = cell1.metadata[METADATA_SET_ID],
-            cell2SetId = cell2.metadata[METADATA_SET_ID];
+            cell1SetId = cell1.metadata.get(METADATA_SET_ID),
+            cell2SetId = cell2.metadata.get(METADATA_SET_ID);
 
           if (cell1SetId !== cell2SetId && random.int(oddsOfMerge) === 0) {
             grid.link(cell1, cell2);
-            mergeSets(cell1.metadata[METADATA_SET_ID], cell2.metadata[METADATA_SET_ID]);
+            mergeSets(cell1.metadata.get(METADATA_SET_ID), cell2.metadata.get(METADATA_SET_ID));
           }
         }
       }
@@ -479,7 +479,7 @@ export const algorithms = {
         const row = [];
         for (let x = 0; x < width; x++) {
           const cell = grid.getCellByCoordinates(x, y);
-          if (!cell.metadata[METADATA_SET_ID]) {
+          if (!cell.metadata.has(METADATA_SET_ID)) {
             addCellToSet(nextSetId++, cell);
           }
           row.push(cell);
@@ -495,7 +495,7 @@ export const algorithms = {
 
           const cellsInRowBySet = {};
           row.forEach(cell => {
-            const setId = cell.metadata[METADATA_SET_ID];
+            const setId = cell.metadata.get(METADATA_SET_ID);
             if (!cellsInRowBySet[setId]) {
               cellsInRowBySet[setId] = [];
             }
@@ -503,7 +503,7 @@ export const algorithms = {
           });
 
           Object.keys(cellsInRowBySet).forEach(setId => {
-            random.shuffle(cellsInRowBySet[setId]).forEach((cell, i) => {
+            random.shuffle(cellsInRowBySet[setId]).forEach((cell: Cell, i: number) => {
               if (i === 0) {
                 linkToCellBelow(cell);
               } else if (random.int(ODDS_OF_LINK_BELOW) === 0) {
